@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Install, connect, secure, and self-host PC Control MCP."
+    />
+    <title>Documentation | PC Control MCP</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-nav">
+      <nav class="nav-inner" aria-label="Primary">
+        <a class="brand" href="index.html"
+          ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+        ><button
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div class="nav-links">
+          <a href="index.html">Product</a
+          ><a href="docs.html" aria-current="page">Docs</a
+          ><a href="security.html">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a
+          ><a
+            class="nav-cta"
+            href="https://github.com/Kyzenkms/solisk-mcp/releases"
+            >Download beta</a
+          >
+        </div>
+      </nav>
+    </header>
+    <main id="main" class="page-shell">
+      <header class="docs-hero">
+        <div class="container">
+          <div class="eyebrow">Documentation / 1.0.0-beta</div>
+          <h1>From install to first tool call.</h1>
+          <p>
+            Practical setup for hosted, local, and self-hosted operation. Start
+            with minimum access, verify connection, then expand scopes
+            deliberately.
+          </p>
+        </div>
+      </header>
+      <div class="container docs-layout">
+        <aside class="docs-nav" aria-label="Documentation sections">
+          <a href="#install">Install</a><a href="#onboarding">Onboarding</a
+          ><a href="#connect">Connect a client</a
+          ><a href="#permissions">Permissions</a
+          ><a href="#self-hosting">Self-hosting</a
+          ><a href="#troubleshooting">Troubleshooting</a>
+        </aside>
+        <article class="docs-content">
+          <section id="install">
+            <h2>Install on Windows</h2>
+            <ol>
+              <li>Download the latest beta installer from GitHub Releases.</li>
+              <li>Run <code>PC Control MCP Setup 1.0.0-beta.exe</code>.</li>
+              <li>
+                Windows SmartScreen may warn because the beta installer is
+                unsigned. Verify the release checksum before continuing.
+              </li>
+              <li>
+                Complete onboarding and keep the generated owner API key
+                private.
+              </li>
+            </ol>
+            <div class="notice">
+              Beta software can control files, processes, input, and system
+              functions. Test with non-critical data and minimum permissions.
+            </div>
+          </section>
+          <section id="onboarding">
+            <h2>Choose connection mode</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>Use when</th>
+                  <th>Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Solisk hosted</td>
+                  <td>
+                    You need a stable public URL without managing a server.
+                  </td>
+                  <td><code>https://mcp.solisk.org/mcp/device-id</code></td>
+                </tr>
+                <tr>
+                  <td>Self-hosted</td>
+                  <td>You operate your own relay and domain.</td>
+                  <td><code>https://mcp.example.com/mcp/device-id</code></td>
+                </tr>
+                <tr>
+                  <td>Local only</td>
+                  <td>Client runs on the same PC.</td>
+                  <td><code>http://localhost:3000/mcp</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <p>
+              Current desktop beta presents Hosted and Local during first-run
+              onboarding. Custom self-hosted relay details can be configured in
+              Settings; dedicated onboarding is planned.
+            </p>
+          </section>
+          <section id="connect">
+            <h2>Connect an MCP client</h2>
+            <p>
+              Use the MCP URL shown in Dashboard and owner or scoped API key
+              from Settings.
+            </p>
+            <h3>HTTP configuration</h3>
+            <pre><code>{
+  "mcpServers": {
+    "pc-control": {
+      "type": "url",
+      "url": "https://mcp.solisk.org/mcp/workspace-id",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}</code></pre>
+            <p>
+              Never paste the owner key into public issues, screenshots,
+              repositories, or shared chat transcripts. Create a scoped key for
+              routine clients.
+            </p>
+          </section>
+          <section id="permissions">
+            <h2>Set permissions before tools</h2>
+            <h3>Approval mode</h3>
+            <p>
+              <strong>Always ask</strong> requires local confirmation for tool
+              execution. Automatic modes reduce friction but increase risk if a
+              client or prompt is compromised.
+            </p>
+            <h3>Allowed paths</h3>
+            <p>
+              Restrict file operations to directories the AI actually needs.
+              Blank allowed paths mean broad filesystem access, subject to
+              explicit denied paths.
+            </p>
+            <h3>Scoped keys</h3>
+            <p>
+              Create separate credentials for file reading, shell access,
+              screenshots, input control, or administration. Revoke a key
+              instead of sharing the owner credential.
+            </p>
+          </section>
+          <section id="self-hosting">
+            <h2>Self-host the relay</h2>
+            <p>
+              The separate self-hosted repository includes one Linux VPS
+              installer with OS detection, Docker Compose, and optional Caddy
+              HTTPS.
+            </p>
+            <pre><code>bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"</code></pre>
+            <p>
+              Supported families include Debian/Ubuntu, Fedora/RHEL, Rocky/Alma,
+              Amazon Linux, Alpine, Arch/Manjaro, and openSUSE/SUSE. A real
+              domain requires DNS pointing to the VPS and inbound ports 80/443.
+            </p>
+            <p>
+              For a same-PC relay, use the Windows local setup script from the
+              self-hosted repository. Local mode is not public unless you
+              deliberately add a tunnel or expose ports.
+            </p>
+          </section>
+          <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <h3>Dashboard shows old domain</h3>
+            <p>
+              Open Settings and verify the relay domain. Existing profiles can
+              retain an older explicit hostname because defaults do not
+              overwrite user configuration.
+            </p>
+            <h3>Browser returns 405</h3>
+            <p>
+              Expected for a normal GET request to an MCP endpoint. MCP clients
+              send POST requests with protocol payloads.
+            </p>
+            <h3>Relay is offline</h3>
+            <p>
+              Check network access, API key, device identity, system time, and
+              whether another machine is already claiming the same self-hosted
+              room.
+            </p>
+            <h3>Certificate fails</h3>
+            <p>
+              Confirm DNS resolves to the relay VPS and ports 80/443 are open.
+              For Caddy deployments, inspect
+              <code>docker compose logs caddy</code>.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"
+            ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+          >
+          <p>Open-source MCP runtime for trusted AI access to Windows.</p>
+        </div>
+        <div>
+          <h3>Docs</h3>
+          <a href="#install">Install</a><a href="#connect">Connect</a
+          ><a href="#self-hosting">Self-host</a>
+        </div>
+        <div>
+          <h3>Project</h3>
+          <a href="security.html">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a>
+        </div>
+        <div>
+          <h3>Legal</h3>
+          <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

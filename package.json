@@ -1,0 +1,62 @@
+{
+  "name": "pc-control-mcp",
+  "version": "1.0.0-beta",
+  "description": "Production-grade MCP server giving AI full control of your Windows PC. Works with ChatGPT connectors, Claude.ai integrations, Cursor, and any MCP client.",
+  "main": "index.js",
+  "type": "commonjs",
+  "bin": {
+    "pc-control-mcp": "./app.js"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "setup": "node app.js --setup",
+    "dev": "node index.js --mode http",
+    "stdio": "node index.js --mode=stdio",
+    "http": "node index.js --mode=http",
+    "both": "node index.js --mode=both",
+    "tunnel": "node tunnel.js start",
+    "tunnel:cf": "powershell -Command \"& 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe' tunnel --url http://localhost:3000\"",
+    "relay": "node -e \"require('./lib/relay-client').startRelayClient(require('./lib/security').config)\"",
+    "inspect": "npx @modelcontextprotocol/inspector node index.js --mode stdio",
+    "inspect:http": "npx @modelcontextprotocol/inspector http://localhost:3000/mcp",
+    "test": "node test-live.js",
+    "build:exe": "pkg app.js --target node18-win-x64 --output dist/pc-control-mcp.exe --compress GZip"
+  },
+  "pkg": {
+    "assets": [
+      "tools/**/*",
+      "lib/**/*",
+      "index.js"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-tools",
+    "pc-control",
+    "chatgpt",
+    "chatgpt-connector",
+    "claude",
+    "claude-ai",
+    "windows",
+    "agent",
+    "remote-mcp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.18.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "pkg": "^5.8.1"
+  }
+}

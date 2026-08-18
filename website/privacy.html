@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Privacy policy for PC Control MCP and its hosted beta relay."
+    />
+    <title>Privacy Policy | PC Control MCP</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-nav">
+      <nav class="nav-inner" aria-label="Primary">
+        <a class="brand" href="index.html"
+          ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+        ><button
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div class="nav-links">
+          <a href="index.html">Product</a><a href="docs.html">Docs</a
+          ><a href="security.html">Security</a
+          ><a href="privacy.html" aria-current="page">Privacy</a>
+        </div>
+      </nav>
+    </header>
+    <main id="main" class="page-shell">
+      <header class="legal-header">
+        <div class="container">
+          <div class="eyebrow">Legal / Privacy</div>
+          <h1>Privacy policy</h1>
+          <p>
+            What the desktop app keeps locally, what the hosted beta relay
+            processes, and what we intentionally do not collect.
+          </p>
+        </div>
+      </header>
+      <div class="container legal-layout">
+        <article class="legal-content">
+          <div class="notice">
+            This policy describes the current public beta. No Google account
+            system or hosted account dashboard is currently active.
+          </div>
+          <section id="scope">
+            <h2>1. Scope</h2>
+            <p>
+              This policy applies to the PC Control MCP desktop application,
+              project website, and managed relay at <code>mcp.solisk.org</code>.
+              Self-hosted operators control their own relay data and should
+              publish policies appropriate to their deployment.
+            </p>
+          </section>
+          <section id="local">
+            <h2>2. Data stored locally</h2>
+            <p>
+              The desktop application stores configuration on your computer,
+              including device identity, relay settings, permission mode,
+              allowed and denied paths, owner credentials, OAuth configuration,
+              and locally managed scoped-key metadata.
+            </p>
+            <p>
+              Local configuration is typically stored under
+              <code>%APPDATA%\pc-control-mcp-desktop</code>. You are responsible
+              for protecting your Windows account and local files.
+            </p>
+          </section>
+          <section id="relay">
+            <h2>3. Hosted relay data</h2>
+            <p>
+              The managed relay may process device room identifiers, connection
+              status, request metadata, session identifiers, credential hashes,
+              OAuth records, IP addresses needed for security and rate limiting,
+              and operational logs needed to diagnose abuse or outages.
+            </p>
+            <p>
+              API keys are intended to be stored as salted hashes by the relay.
+              Plaintext credentials are transmitted when registering or
+              authenticating and should only travel over HTTPS/TLS.
+            </p>
+          </section>
+          <section id="content">
+            <h2>4. Tool content</h2>
+            <p>
+              MCP requests and responses can contain file paths, commands, text,
+              screenshots, clipboard data, or other sensitive computer content
+              depending on the tool you invoke. The relay transports requests
+              between your AI client and desktop runtime.
+            </p>
+            <p>
+              We do not claim ownership of your content. Do not expose
+              information you are not authorized to process, and use local mode
+              or self-hosting when managed relay processing is unsuitable.
+            </p>
+          </section>
+          <section id="website">
+            <h2>5. Website data</h2>
+            <p>
+              The static website does not currently provide user accounts,
+              advertising, or behavioral tracking. Infrastructure providers may
+              retain standard HTTP logs such as IP address, timestamp, user
+              agent, and requested path.
+            </p>
+          </section>
+          <section id="sharing">
+            <h2>6. Sharing and providers</h2>
+            <p>
+              Data may be processed by infrastructure providers used for DNS,
+              TLS, hosting, and network delivery. We may disclose information
+              when required by law, to investigate abuse, or to protect users
+              and infrastructure.
+            </p>
+            <p>We do not sell personal information.</p>
+          </section>
+          <section id="retention">
+            <h2>7. Retention and deletion</h2>
+            <p>
+              Local data remains until you remove it. Hosted room and token
+              records can be removed by revoking keys, regenerating the MCP URL,
+              or contacting us. Operational logs may be retained for a limited
+              period needed for security and reliability.
+            </p>
+            <p>
+              For deletion requests, email
+              <a href="mailto:kyzenkms@duck.com">kyzenkms@duck.com</a> with
+              enough information to identify the relevant hosted device without
+              sending secret keys.
+            </p>
+          </section>
+          <section id="security">
+            <h2>8. Security</h2>
+            <p>
+              No system is risk-free. Use minimum scopes, restrict file paths,
+              keep approval mode enabled for sensitive operations, and rotate
+              any credential that may have been exposed. See the
+              <a href="security.html">security page</a> for current boundaries.
+            </p>
+          </section>
+          <section id="children">
+            <h2>9. Children</h2>
+            <p>
+              PC Control MCP is a technical computer-control tool and is not
+              directed to children under 13.
+            </p>
+          </section>
+          <section id="changes">
+            <h2>10. Changes</h2>
+            <p>
+              We may update this policy as hosted features change. Material
+              changes will update the effective date and should be reviewed
+              before continued hosted-relay use.
+            </p>
+          </section>
+          <section id="contact">
+            <h2>11. Contact</h2>
+            <p>
+              Privacy questions:
+              <a href="mailto:kyzenkms@duck.com">kyzenkms@duck.com</a>.
+            </p>
+          </section>
+        </article>
+        <aside class="legal-meta">
+          <b>Effective</b>August 17, 2026<br /><br /><b>Service</b>Public
+          beta<br /><br /><b>Controller contact</b>kyzenkms@duck.com
+        </aside>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"
+            ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+          >
+        </div>
+        <div>
+          <h3>Product</h3>
+          <a href="docs.html">Docs</a><a href="security.html">Security</a>
+        </div>
+        <div>
+          <h3>Project</h3>
+          <a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a>
+        </div>
+        <div>
+          <h3>Legal</h3>
+          <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

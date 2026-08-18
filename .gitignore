@@ -1,0 +1,47 @@
+node_modules/
+dist/
+desktop-app/node_modules/
+desktop-app/dist/
+desktop-app/app-error.log
+electron_stderr.log
+electron_stdout.log
+logs/
+scratch/
+*.log
+oauth_tokens.json
+rooms.json
+.DS_Store
+.env
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Local runtime config (contains generated API keys / OAuth secrets).
+# Use config.example.json as the template; the app generates real values on first run.
+config.json
+
+# Never commit backup copies of source (may contain pre-patch vulnerable code)
+*.vuln-bak
+*.bak
+*.orig
+
+# Release artifacts
+desktop-app/dist/
+desktop-app/*.pdb
+landing-page/
+prepare-release/
+
+# Self-hosted configs
+self-hosted-setup/config/*.json
+self-hosted-setup/*.env
+
+# Personal / internal notes (contain credentials, VPS details)
+mypc-connector-issues.md
+BACKUP_STATE.md
+ROADMAP.md
+*.original.md
+
+# Personal AI agent skill definitions (not part of the product)
+.claude/
+skills/

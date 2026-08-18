@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="PC Control MCP is an open-source control layer connecting trusted AI clients to Windows machines through scoped, auditable Model Context Protocol tools."
+    />
+    <title>PC Control MCP | The open control layer for AI and Windows</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <noscript
+      ><style>
+        .skeleton-loader {
+          display: none;
+        }
+      </style></noscript
+    >
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="skeleton-loader" aria-hidden="true">
+      <div class="skeleton-nav">
+        <div class="skeleton-block skeleton-brand"></div>
+        <div class="skeleton-links">
+          <div class="skeleton-block"></div>
+          <div class="skeleton-block"></div>
+          <div class="skeleton-block"></div>
+        </div>
+      </div>
+      <div class="skeleton-hero">
+        <div class="skeleton-copy">
+          <div class="skeleton-block skeleton-kicker"></div>
+          <div class="skeleton-block skeleton-title"></div>
+          <div class="skeleton-block skeleton-title short"></div>
+          <div class="skeleton-block skeleton-text"></div>
+          <div class="skeleton-block skeleton-text short"></div>
+          <div class="skeleton-actions">
+            <div class="skeleton-block"></div>
+            <div class="skeleton-block"></div>
+          </div>
+        </div>
+        <div class="skeleton-block skeleton-console"></div>
+      </div>
+    </div>
+    <header class="site-nav">
+      <nav class="nav-inner" aria-label="Primary">
+        <a class="brand" href="index.html"
+          ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+        ><button
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div class="nav-links">
+          <a href="#how-it-works">How it works</a
+          ><a href="#capabilities">Tools</a><a href="#product">Deploy</a
+          ><a href="docs.html">Docs</a><a href="security.html">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a
+          ><a
+            class="nav-cta"
+            href="https://github.com/Kyzenkms/solisk-mcp/releases"
+            >Download beta</a
+          >
+        </div>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero">
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <div class="eyebrow">
+              Open source / Windows automation / Public beta
+            </div>
+            <h1>The control layer between <span>AI and Windows.</span></h1>
+            <p>
+              A local MCP server for Windows. Add one endpoint to an MCP client,
+              let it discover available tools, then approve or deny real actions
+              such as reading files, running commands, or controlling input.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button primary"
+                href="https://github.com/Kyzenkms/solisk-mcp/releases"
+                ><svg viewBox="0 0 24 24">
+                  <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg
+                >Download for Windows</a
+              ><a class="button" href="docs.html">Read setup guide</a>
+            </div>
+            <div class="release-note">
+              1.0.0-beta / unsigned Windows installer / MIT licensed
+            </div>
+          </div>
+          <div
+            class="relay-scene"
+            role="img"
+            aria-label="Diagram showing MCP clients securely connected through a relay to Windows runtimes"
+          >
+            <div class="signal-line"></div>
+            <div class="node client">
+              <div class="node-dot"></div>
+              <strong>AI CLIENT</strong><small>Bearer key + scope</small>
+            </div>
+            <div class="console">
+              <div class="console-bar">
+                <span>PC CONTROL / WORKSPACE GLOBAL-01</span
+                ><span class="console-live">RELAY LIVE</span>
+              </div>
+              <div class="console-body">
+                <div class="url-label">MCP endpoint</div>
+                <div class="url">https://mcp.solisk.org/mcp/workspace-id</div>
+                <div class="console-grid">
+                  <div class="metric"><b>96</b><span>tools exposed</span></div>
+                  <div class="metric"><b>MCP</b><span>open protocol</span></div>
+                  <div class="metric"><b>ASK</b><span>policy mode</span></div>
+                </div>
+                <div class="log">
+                  <div>
+                    <span class="ok">12:04:17 ALLOW</span> read_file ·
+                    project/README.md
+                  </div>
+                  <div>
+                    <span class="warn">12:04:22 ASK</span> run_command ·
+                    awaiting owner
+                  </div>
+                  <div>
+                    <span class="ok">12:04:28 ALLOW</span> get_system_info ·
+                    143ms
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="node pc">
+              <div class="node-dot"></div>
+              <strong>WINDOWS RUNTIME</strong
+              ><small>Local execution boundary</small>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="section capabilities" id="capabilities">
+        <div class="container">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Product capabilities</div>
+              <h2>One protocol surface. Full machine context.</h2>
+            </div>
+            <p>
+              Use individual capabilities or compose them into operator
+              workflows. Every request still crosses authentication, scopes,
+              path policy, and optional local approval.
+            </p>
+          </div>
+          <div class="capability-grid">
+            <article class="capability featured">
+              <span>01</span>
+              <h3>Filesystem</h3>
+              <p>
+                Read, write, patch, search, move, copy, inspect, and structure
+                files inside configured boundaries.
+              </p>
+              <code>read_file · grep · patch_file</code>
+            </article>
+            <article class="capability">
+              <span>02</span>
+              <h3>Shell &amp; processes</h3>
+              <p>
+                Execute approved commands, manage background work, inspect
+                processes, and query environment state.
+              </p>
+              <code>run_command · list_processes</code>
+            </article>
+            <article class="capability">
+              <span>03</span>
+              <h3>Screen &amp; input</h3>
+              <p>
+                Capture displays, read visible text, control mouse and keyboard,
+                and target active windows.
+              </p>
+              <code>take_screenshot · key_press</code>
+            </article>
+            <article class="capability">
+              <span>04</span>
+              <h3>Network &amp; web</h3>
+              <p>
+                Call HTTP services, inspect addresses and connections, expose
+                local services, and transfer files.
+              </p>
+              <code>http_get · expose_port</code>
+            </article>
+            <article class="capability">
+              <span>05</span>
+              <h3>System operations</h3>
+              <p>
+                Inspect hardware, disks, battery, applications, startup state,
+                clipboard, audio, and notifications.
+              </p>
+              <code>get_system_info · notify</code>
+            </article>
+            <article class="capability featured">
+              <span>06</span>
+              <h3>Persistent context</h3>
+              <p>
+                Store task context locally, operate Git repositories, and
+                coordinate long-running machine workflows.
+              </p>
+              <code>memory_set · git_diff</code>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="integration-band">
+        <div class="container integration-layout">
+          <div>
+            <div class="eyebrow">Protocol-first integrations</div>
+            <h2>Built for the MCP ecosystem, not one assistant.</h2>
+          </div>
+          <div class="integration-list">
+            <span>Claude</span><span>ChatGPT</span><span>Cursor</span
+            ><span>OpenClaw</span><span>Custom MCP clients</span>
+          </div>
+        </div>
+      </section>
+      <section class="section workflow" id="how-it-works">
+        <div class="container">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">The MCP request path</div>
+              <h2>What actually happens after you connect.</h2>
+            </div>
+            <p>
+              PC Control MCP does not give an AI a hidden desktop session. The
+              client speaks MCP, the server advertises tools, policy decides
+              what can run, and the Windows process returns a structured result.
+            </p>
+          </div>
+          <div class="workflow-grid">
+            <article class="workflow-step">
+              <span class="workflow-number">01</span>
+              <h3>Configure</h3>
+              <p>
+                Add the Streamable HTTP endpoint and bearer key to Claude,
+                ChatGPT, Cursor, or another MCP client.
+              </p>
+              <pre><code>"url": "https://mcp.solisk.org/mcp/workspace-id"
+"Authorization": "Bearer …"</code></pre>
+            </article>
+            <article class="workflow-step">
+              <span class="workflow-number">02</span>
+              <h3>Discover</h3>
+              <p>
+                The client initializes an MCP session and calls
+                <code>tools/list</code> to learn which capabilities are
+                available.
+              </p>
+              <pre><code>{ "method": "tools/list" }
+→ read_file, run_command, take_screenshot</code></pre>
+            </article>
+            <article class="workflow-step">
+              <span class="workflow-number">03</span>
+              <h3>Request</h3>
+              <p>
+                The model selects a tool and sends typed arguments. The local
+                runtime checks key scope, paths, and approval mode.
+              </p>
+              <pre><code>{ "name": "read_file",
+  "arguments": { "path": "README.md" } }</code></pre>
+            </article>
+            <article class="workflow-step">
+              <span class="workflow-number">04</span>
+              <h3>Execute or deny</h3>
+              <p>
+                An allowed call runs on Windows and returns a JSON-RPC result. A
+                denied or unapproved call returns an error without execution.
+              </p>
+              <pre><code>{ "content": [{ "type": "text",
+  "text": "…file contents…" }] }</code></pre>
+            </article>
+          </div>
+          <div class="workflow-note">
+            <strong>Important:</strong> tool calls can change the machine. Start
+            with local-only mode, approval enabled, restricted paths, and scoped
+            keys.
+          </div>
+        </div>
+      </section>
+      <section class="proof-strip" aria-label="Product facts">
+        <div class="container proof-grid">
+          <div class="proof-item"><b>MIT</b><span>open-source core</span></div>
+          <div class="proof-item">
+            <b>TLS</b><span>hosted relay transport</span>
+          </div>
+          <div class="proof-item">
+            <b>LOCAL</b><span>account-free mode</span>
+          </div>
+          <div class="proof-item">
+            <b>SCOPED</b><span>least-privilege keys</span>
+          </div>
+        </div>
+      </section>
+      <section class="section" id="product">
+        <div class="container">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Choose your boundary</div>
+              <h2>One runtime. Three ways to connect.</h2>
+            </div>
+            <p>
+              Use managed infrastructure, bring your own relay, or keep
+              everything on loopback. Core PC control remains local in every
+              mode.
+            </p>
+          </div>
+          <div class="mode-grid">
+            <article class="mode">
+              <span class="mode-index">01 / MANAGED</span>
+              <h3>Solisk hosted</h3>
+              <p>
+                Stable public HTTPS URL without router configuration or VPS
+                maintenance.
+              </p>
+              <ul>
+                <li>mcp.solisk.org endpoint</li>
+                <li>Outbound desktop connection</li>
+                <li>Recommended for beta users</li>
+              </ul>
+            </article>
+            <article class="mode">
+              <span class="mode-index">02 / OWNED</span>
+              <h3>Self-hosted</h3>
+              <p>
+                Run the relay on your Linux VPS with Docker and automatic Caddy
+                certificates.
+              </p>
+              <ul>
+                <li>Your domain and server</li>
+                <li>Cross-distribution installer</li>
+                <li>Persistent relay state</li>
+              </ul>
+            </article>
+            <article class="mode">
+              <span class="mode-index">03 / OFFLINE</span>
+              <h3>Local only</h3>
+              <p>
+                Use MCP clients on the same computer without public
+                infrastructure.
+              </p>
+              <ul>
+                <li>localhost:3000</li>
+                <li>No relay or cloud account</li>
+                <li>Best for private workflows</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="container security-layout">
+          <div class="security-statement">
+            <div class="eyebrow">Control is explicit</div>
+            <h2>Power without invisible permission.</h2>
+            <p>
+              PC access is dangerous when authority is vague. PC Control MCP
+              makes credentials, scopes, filesystem boundaries, and approval
+              mode visible.
+            </p>
+            <a class="button" href="security.html">Read security model</a>
+          </div>
+          <div class="security-steps">
+            <article class="security-step">
+              <div class="num">01</div>
+              <div>
+                <h3>Authenticate every client</h3>
+                <p>
+                  Owner and scoped keys are presented as bearer credentials.
+                  Relay stores salted hashes instead of plaintext keys.
+                </p>
+              </div>
+            </article>
+            <article class="security-step">
+              <div class="num">02</div>
+              <div>
+                <h3>Grant only required tools</h3>
+                <p>
+                  Scoped keys constrain categories such as file read, shell,
+                  input, system, network, and screenshots.
+                </p>
+              </div>
+            </article>
+            <article class="security-step">
+              <div class="num">03</div>
+              <div>
+                <h3>Keep execution on your machine</h3>
+                <p>
+                  The desktop runtime executes tools locally. Hosted relay
+                  transports authenticated MCP requests; it is not the
+                  computer-control runtime.
+                </p>
+              </div>
+            </article>
+            <article class="security-step">
+              <div class="num">04</div>
+              <div>
+                <h3>Revoke identity when needed</h3>
+                <p>
+                  Regenerating a device URL removes the old relay room,
+                  disconnects active sessions, and creates a new device
+                  identity.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="section use-cases">
+        <div class="container">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Designed for real operators</div>
+              <h2>From one workstation to distributed environments.</h2>
+            </div>
+            <p>
+              PC Control MCP is infrastructure, not a personal profile. Adopt
+              the same runtime in private workstations, engineering labs,
+              support operations, and self-managed deployments.
+            </p>
+          </div>
+          <div class="use-case-list">
+            <article>
+              <span>DEVELOPERS</span>
+              <h3>
+                Give coding agents controlled access to repositories, terminals,
+                browsers, and local test environments.
+              </h3>
+            </article>
+            <article>
+              <span>OPERATIONS</span>
+              <h3>
+                Build auditable support and maintenance workflows with approval
+                before sensitive actions.
+              </h3>
+            </article>
+            <article>
+              <span>RESEARCH &amp; LABS</span>
+              <h3>
+                Coordinate repeatable data, application, screen, and device
+                workflows across Windows machines.
+              </h3>
+            </article>
+            <article>
+              <span>SELF-HOSTERS</span>
+              <h3>
+                Own the relay, domain, credentials, state, and deployment
+                lifecycle without mandatory accounts.
+              </h3>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="section open-source">
+        <div class="container open-grid">
+          <div>
+            <div class="eyebrow">No mandatory cloud account</div>
+            <h2>Inspect it. Fork it. Host it.</h2>
+            <p>
+              Desktop runtime, relay, scopes, and self-hosting setup are source
+              available under MIT. Managed hosting is optional; local and
+              self-hosted modes remain independent.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button primary"
+                href="https://github.com/Kyzenkms/solisk-mcp"
+                >View source</a
+              ><a class="button secondary" href="docs.html#self-hosting"
+                >Self-host guide</a
+              >
+            </div>
+          </div>
+          <div class="repo-window" role="img" aria-label="Repository structure">
+            <header>github.com/Kyzenkms/solisk-mcp</header>
+            <div class="repo-tree">
+              <div><b>desktop-app/</b> &nbsp; Windows control surface</div>
+              <div><b>relay-server/</b> &nbsp; WebSocket + MCP relay</div>
+              <div><b>tools/</b> &nbsp; Local PC capabilities</div>
+              <div><b>lib/</b> &nbsp; Security and transport</div>
+              <div><b>SECURITY.md</b> &nbsp; threat boundaries</div>
+              <div><b>LICENSE</b> &nbsp; MIT</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="cta-band">
+        <div class="container cta-inner">
+          <div>
+            <div class="eyebrow">Public beta</div>
+            <h2>Deploy globally. Keep authority local.</h2>
+          </div>
+          <a
+            class="button primary"
+            href="https://github.com/Kyzenkms/solisk-mcp/releases"
+            >Download beta</a
+          >
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"
+            ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+          >
+          <p>
+            Open-source MCP control infrastructure for granting trusted AI
+            clients explicit, scoped access to Windows environments.
+          </p>
+        </div>
+        <div>
+          <h3>Product</h3>
+          <a href="docs.html">Documentation</a
+          ><a href="security.html">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp/releases"
+            >Releases</a
+          >
+        </div>
+        <div>
+          <h3>Project</h3>
+          <a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp"
+            >Self-hosted</a
+          ><a href="mailto:kyzenkms@duck.com">Contact</a>
+        </div>
+        <div>
+          <h3>Legal</h3>
+          <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a
+          ><span>© <span data-year></span></span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

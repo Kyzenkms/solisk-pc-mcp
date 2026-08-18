@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Security model, trust boundaries, and vulnerability reporting for PC Control MCP."
+    />
+    <title>Security | PC Control MCP</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-nav">
+      <nav class="nav-inner" aria-label="Primary">
+        <a class="brand" href="index.html"
+          ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+        ><button
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div class="nav-links">
+          <a href="index.html">Product</a><a href="docs.html">Docs</a
+          ><a href="security.html" aria-current="page">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">Source</a>
+        </div>
+      </nav>
+    </header>
+    <main id="main" class="page-shell">
+      <header class="docs-hero">
+        <div class="container">
+          <div class="eyebrow">Security / Trust boundaries</div>
+          <h1>Assume every permission matters.</h1>
+          <p>
+            PC Control MCP deliberately exposes powerful local capabilities.
+            Security depends on authenticated clients, least-privilege scopes,
+            local approval, and keeping credentials out of untrusted contexts.
+          </p>
+        </div>
+      </header>
+      <div class="container docs-layout">
+        <aside class="docs-nav" aria-label="Security sections">
+          <a href="#model">Security model</a
+          ><a href="#credentials">Credentials</a
+          ><a href="#transport">Transport</a><a href="#storage">Storage</a
+          ><a href="#limits">Current limitations</a
+          ><a href="#report">Report vulnerability</a>
+        </aside>
+        <article class="docs-content">
+          <section id="model">
+            <h2>Security model</h2>
+            <p>
+              The AI client sends authenticated MCP requests to either the local
+              runtime or relay. The relay authorizes the credential and forwards
+              approved traffic to the connected desktop. Tool execution occurs
+              on the PC.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Boundary</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Owner key</td>
+                  <td>
+                    Controls device ownership and high-privilege administration.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Scoped key</td>
+                  <td>Limits a client to selected tool categories.</td>
+                </tr>
+                <tr>
+                  <td>Approval mode</td>
+                  <td>
+                    Requires local user confirmation before execution when
+                    enabled.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Allowed paths</td>
+                  <td>
+                    Restricts filesystem operations to configured directories.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Relay room</td>
+                  <td>
+                    Maps a unique device identity to its active desktop socket.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+          <section id="credentials">
+            <h2>Credentials</h2>
+            <p>
+              Use a different scoped key for each client or person. Do not share
+              the owner key. Hosted and current self-hosted relay
+              implementations store registered API keys using salted scrypt
+              hashes rather than plaintext records.
+            </p>
+            <p>
+              Regenerating the MCP URL stops the previous runtime connection,
+              removes the old relay room, revokes related relay tokens, and
+              creates a new device identity. Clients must be updated manually.
+            </p>
+          </section>
+          <section id="transport">
+            <h2>Transport</h2>
+            <p>
+              The managed endpoint uses HTTPS and secure WebSockets. Local-only
+              HTTP is bound to loopback. Self-hosted operators are responsible
+              for valid TLS, DNS, firewall rules, updates, and proxy
+              configuration.
+            </p>
+            <div class="notice">
+              TLS protects network transport. Current beta does not provide
+              application-level end-to-end encryption between MCP client and
+              desktop beyond the relay transport channel.
+            </div>
+          </section>
+          <section id="storage">
+            <h2>Storage</h2>
+            <p>
+              Desktop configuration and credentials are stored under the current
+              Windows user profile. Relay room and OAuth state are stored on the
+              relay host. Self-hosted deployments persist state in Docker
+              volumes.
+            </p>
+            <p>
+              Back up configuration securely. Never commit
+              <code>config.json</code>, <code>rooms.json</code>, OAuth token
+              files, or generated secrets.
+            </p>
+          </section>
+          <section id="limits">
+            <h2>Current beta limitations</h2>
+            <ul>
+              <li>
+                Windows installer is unsigned and may trigger SmartScreen.
+              </li>
+              <li>
+                Desktop TLS verification and Electron CSP require final release
+                hardening.
+              </li>
+              <li>
+                No application-level end-to-end encryption across the managed
+                relay.
+              </li>
+              <li>
+                Powerful tools can cause data loss or system changes when
+                authorized.
+              </li>
+              <li>
+                AI prompt injection can influence connected clients; scopes and
+                approval remain necessary.
+              </li>
+            </ul>
+          </section>
+          <section id="report">
+            <h2>Report a vulnerability</h2>
+            <p>
+              Do not open a public issue for sensitive vulnerabilities. Use a
+              private GitHub security advisory or email
+              <a href="mailto:kyzenkms@duck.com">kyzenkms@duck.com</a>.
+            </p>
+            <p>
+              Include affected version, reproduction steps, impact, and a safe
+              proof of concept. Do not include live API keys, private files, or
+              unrelated user data. Reports are acknowledged within 72 hours when
+              possible.
+            </p>
+            <p>
+              <a
+                class="button primary"
+                href="https://github.com/Kyzenkms/solisk-mcp/security/advisories/new"
+                >Open private advisory</a
+              >
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"
+            ><img src="assets/logo.svg" alt="" /><span>PC Control MCP</span></a
+          >
+        </div>
+        <div>
+          <h3>Security</h3>
+          <a href="#model">Model</a><a href="#report">Report issue</a>
+        </div>
+        <div>
+          <h3>Project</h3>
+          <a href="docs.html">Docs</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a>
+        </div>
+        <div>
+          <h3>Legal</h3>
+          <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

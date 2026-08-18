@@ -1,0 +1,38 @@
+services:
+  relay:
+    build: ./relay-server
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      RELAY_ADMIN_TOKEN: "${RELAY_ADMIN_TOKEN}"
+    volumes:
+      - relay-data:/app/data
+    networks:
+      - relay
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      RELAY_DOMAIN: "${RELAY_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - relay
+    depends_on:
+      - relay
+
+networks:
+  relay:
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The installer bundles the server's node_modules via extraResources,
+      # so the root production dependencies must be installed first.
+      - name: Install server dependencies
+        run: npm ci --omit=dev
+
+      - name: Install desktop-app dependencies
+        working-directory: desktop-app
+        run: npm ci
+
+      - name: Build unsigned beta installer
+        working-directory: desktop-app
+        run: npm run build:unsigned-beta
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: desktop-app/dist/PC Control MCP Setup *.exe
+          if-no-files-found: error
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable
+          path: desktop-app/dist/win-unpacked/
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: desktop-app/dist/PC Control MCP Setup *.exe

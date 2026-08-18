@@ -1,0 +1,28 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("mcp", {
+  getStatus:          () => ipcRenderer.invoke("get-status"),
+  getConfig:          () => ipcRenderer.invoke("get-config"),
+  getLogs:            () => ipcRenderer.invoke("get-logs"),
+  startServer:        () => ipcRenderer.invoke("start-server"),
+  stopServer:         () => ipcRenderer.invoke("stop-server"),
+  regenerateMcpUrl:   () => ipcRenderer.invoke("regenerate-mcp-url"),
+  saveConfig:         (c) => ipcRenderer.invoke("save-config", c),
+  copyUrl:            () => ipcRenderer.invoke("copy-url"),
+  openUrl:            (u) => ipcRenderer.invoke("open-url", u),
+  minimize:           () => ipcRenderer.invoke("minimize"),
+  maximize:           () => ipcRenderer.invoke("maximize"),
+  close:              () => ipcRenderer.invoke("close-win"),
+  quit:               () => ipcRenderer.invoke("quit-app"),
+  checkCloudflared:   () => ipcRenderer.invoke("check-cloudflared"),
+  installCloudflared: () => ipcRenderer.invoke("install-cloudflared"),
+  onStatus: (fn) => { ipcRenderer.on("status", (_, d) => fn(d)); },
+  onLog:    (fn) => { ipcRenderer.on("log",    (_, d) => fn(d)); },
+  onConfig: (fn) => { ipcRenderer.on("config", (_, d) => fn(d)); },
+  onShellApprovalReq: (fn) => { ipcRenderer.on("shell-approval-req", (_, d) => fn(d)); },
+  sendShellApprovalRes: (data) => ipcRenderer.invoke("shell-approval-res", data),
+  relayListKeys:    () => ipcRenderer.invoke("relay-list-keys"),
+  relayCreateKey:   (p) => ipcRenderer.invoke("relay-create-key", p),
+  relayRevokeKey:   (k) => ipcRenderer.invoke("relay-revoke-key", k),
+  relaySetMode:     (m) => ipcRenderer.invoke("relay-set-mode", m),
+});

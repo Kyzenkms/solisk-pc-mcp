@@ -1,0 +1,29 @@
+{
+  "_comment": "Template only. You do not need to edit this file. On first run the app generates api_key, oauth_client_id, oauth_client_secret and name automatically, and writes the real config to your user data folder (Windows: %APPDATA%\\PC Control MCP\\config.json). Copy this to config.json only if you are running the server headless via `node index.js` without the desktop app.",
+
+  "name": "",
+  "port": 3000,
+  "autostart": true,
+
+  "api_key": "",
+  "oauth_client_id": "",
+  "oauth_client_secret": "",
+
+  "relay_enabled": false,
+  "relay_domain": "",
+
+  "permission_mode": "always",
+  "allowed_paths": [],
+  "denied_paths": [
+    "C:\\Windows\\System32",
+    "C:\\Windows\\SysWOW64"
+  ],
+
+  "rate_limit": {
+    "windowMs": 60000,
+    "max": 200
+  },
+  "session_ttl_ms": 3600000,
+
+  "ready": false
+}
