@@ -24,6 +24,34 @@ const SERVER_DIR = isDev
   : path.join(process.resourcesPath, "server");
 const CONFIG_FILE = path.join(app.getPath("userData"), "config.json");
 
+// Config durability helpers live with the server so both share one implementation.
+const configRepair = require(path.join(SERVER_DIR, "lib", "config-repair.js"));
+
+// The app was previously packaged under a different name, which gave it a
+// different userData directory. Adopt that config once so an upgrade does not
+// look like a factory reset (new API key, lost relay settings, lost mode).
+const LEGACY_USER_DATA_DIRS = ["pc-control-mcp-desktop"];
+
+function migrateLegacyConfig() {
+  if (fs.existsSync(CONFIG_FILE)) return;
+
+  const parent = path.dirname(app.getPath("userData"));
+  for (const dirName of LEGACY_USER_DATA_DIRS) {
+    const legacy = path.join(parent, dirName, "config.json");
+    if (legacy === CONFIG_FILE || !fs.existsSync(legacy)) continue;
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(legacy, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      configRepair.writeConfigAtomic(CONFIG_FILE, parsed);
+      addLog(`Imported existing settings from ${dirName}`, "info");
+      return;
+    } catch {
+      // Unreadable legacy config: fall through and start fresh.
+    }
+  }
+}
+
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let win          = null;
@@ -45,28 +73,55 @@ let logLines     = [];
 
 function loadConfig() {
   try {
+    // Adopt a previous install's config before deciding we have none.
+    migrateLegacyConfig();
+
     const rootConfig = path.join(__dirname, "..", "config.json");
     let rootCfg = {};
     if (fs.existsSync(rootConfig)) {
       try { rootCfg = JSON.parse(fs.readFileSync(rootConfig, "utf8")); } catch {}
     }
     if (fs.existsSync(CONFIG_FILE)) {
-      const userCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-       // The userData config is authoritative at runtime. The packaged/root
-       // config is only the initial seed; mixing its API key back in causes the
-       // relay to authenticate with a different key than the child MCP server.
-       return { ...rootCfg, ...userCfg };
+      // Recovers from a corrupt or truncated file by falling back to the most
+      // recent good backup, so a bad write cannot cost the user their API key.
+      const result = configRepair.loadConfigSafe(CONFIG_FILE);
+
+      if (result.corruptBackup) {
+        addLog(`Config was unreadable — a copy was saved to ${result.corruptBackup}`, "error");
+      }
+      if (result.recovered) {
+        addLog("Config restored from the last good backup", "warn");
+      }
+      if (result.repaired.length > 0) {
+        addLog(`Repaired config fields: ${result.repaired.join(", ")}`, "warn");
+        if (result.repaired.includes("api_key")) {
+          addLog("A new API key was generated — update your AI clients", "error");
+        }
+      }
+      // Persist repairs so the fixed config survives a restart.
+      if (result.recovered || result.repaired.length > 0) {
+        try { configRepair.writeConfigAtomic(CONFIG_FILE, result.config); } catch {}
+      }
+
+      // The userData config is authoritative at runtime. The packaged/root
+      // config is only the initial seed; mixing its API key back in causes the
+      // relay to authenticate with a different key than the child MCP server.
+      return { ...rootCfg, ...result.config };
     }
     if (Object.keys(rootCfg).length > 0) {
       saveConfig(rootCfg);
       return rootCfg;
     }
     return {};
-  } catch { return {}; }
+  } catch (e) {
+    addLog(`Config could not be loaded: ${e.message}`, "error");
+    return {};
+  }
 }
 function saveConfig(c) {
-  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2));
+  // Atomic write with a rolling backup, so an interrupted save cannot leave a
+  // truncated config behind.
+  configRepair.writeConfigAtomic(CONFIG_FILE, c);
 }
 
 function addLog(msg, type = "info", meta = null) {
@@ -649,6 +704,96 @@ function createTray() {
 ipcMain.handle("get-status",  () => getStatus());
 ipcMain.handle("get-config",  () => loadConfig());
 ipcMain.handle("get-logs",    () => logLines);
+
+// ── Config repair / restore ───────────────────────────────────────────────────
+ipcMain.handle("config-diagnose", () => {
+  const cfg = loadConfig();
+  const { valid, problems } = configRepair.validateConfig(cfg);
+  return {
+    valid,
+    problems,
+    configPath: CONFIG_FILE,
+    backups: configRepair.listBackups(CONFIG_FILE).map((b) => ({
+      name: b.name,
+      path: b.path,
+      savedAt: new Date(b.mtime).toISOString(),
+    })),
+  };
+});
+
+ipcMain.handle("config-repair", () => {
+  const before = loadConfig();
+  const { config, repaired } = configRepair.repairConfig(before);
+
+  if (repaired.length === 0) {
+    return { ok: true, repaired: [], message: "Config is already valid — nothing to repair." };
+  }
+
+  const wasRunning = isRunning;
+  if (wasRunning) stopServer();
+
+  try {
+    configRepair.writeConfigAtomic(CONFIG_FILE, config);
+  } catch (e) {
+    addLog(`Config repair failed: ${e.message}`, "error");
+    if (wasRunning) startServer(before);
+    return { ok: false, error: `Config could not be saved: ${e.message}` };
+  }
+
+  addLog(`Repaired config fields: ${repaired.join(", ")}`, "warn");
+  if (win && !win.isDestroyed()) win.webContents.send("config", config);
+
+  if (wasRunning) {
+    startServer(config);
+    if (config.relay_enabled !== false) startTunnel(config);
+    startRelay(config);
+  }
+
+  return {
+    ok: true,
+    repaired,
+    keyChanged: repaired.includes("api_key"),
+    message: repaired.includes("api_key")
+      ? `Repaired: ${repaired.join(", ")}. A new API key was generated — update your AI clients.`
+      : `Repaired: ${repaired.join(", ")}.`,
+  };
+});
+
+ipcMain.handle("config-restore", (_, backupPath) => {
+  const wasRunning = isRunning;
+  if (wasRunning) stopServer();
+
+  const result = configRepair.restoreConfig(CONFIG_FILE, backupPath || null);
+  if (!result.ok) {
+    addLog(`Config restore failed: ${result.error}`, "error");
+    if (wasRunning) startServer(loadConfig());
+    return result;
+  }
+
+  addLog(`Config restored from ${path.basename(result.restoredFrom)}`, "warn");
+  if (win && !win.isDestroyed()) win.webContents.send("config", result.config);
+
+  if (wasRunning) {
+    startServer(result.config);
+    if (result.config.relay_enabled !== false) startTunnel(result.config);
+    startRelay(result.config);
+  }
+
+  return { ...result, message: "Config restored. Verify your API key still matches your AI clients." };
+});
+
+ipcMain.handle("config-backup", () => {
+  const target = configRepair.backupConfig(CONFIG_FILE);
+  if (!target) return { ok: false, error: "There is no valid config to back up yet." };
+  addLog("Config backup created", "info");
+  return { ok: true, path: target };
+});
+
+ipcMain.handle("config-open-folder", () => {
+  shell.showItemInFolder(CONFIG_FILE);
+  return { ok: true };
+});
+
 ipcMain.handle("start-server",async () => {
   const cfg = loadConfig();
   if (!cfg.ready) return false;

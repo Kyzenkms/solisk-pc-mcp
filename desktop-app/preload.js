@@ -25,4 +25,9 @@ contextBridge.exposeInMainWorld("mcp", {
   relayCreateKey:   (p) => ipcRenderer.invoke("relay-create-key", p),
   relayRevokeKey:   (k) => ipcRenderer.invoke("relay-revoke-key", k),
   relaySetMode:     (m) => ipcRenderer.invoke("relay-set-mode", m),
+  configDiagnose:   () => ipcRenderer.invoke("config-diagnose"),
+  configRepair:     () => ipcRenderer.invoke("config-repair"),
+  configRestore:    (p) => ipcRenderer.invoke("config-restore", p),
+  configBackup:     () => ipcRenderer.invoke("config-backup"),
+  configOpenFolder: () => ipcRenderer.invoke("config-open-folder"),
 });

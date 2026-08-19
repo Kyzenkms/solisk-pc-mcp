@@ -176,8 +176,27 @@ function escHtml(s) {
 }
 
 function baseUrl(req) {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host  = req.headers["x-forwarded-host"]  || req.headers["host"] || `localhost:${req.socket.localPort || 3000}`;
+  // An explicit PUBLIC_URL always wins. Set it in production so the issuer and
+  // endpoint URLs stay correct no matter how the reverse proxy is configured.
+  if (process.env.PUBLIC_URL) return String(process.env.PUBLIC_URL).replace(/\/+$/, "");
+
+  const host = req.headers["x-forwarded-host"] || req.headers["host"] || `localhost:${req.socket.localPort || 3000}`;
+
+  // OAuth clients (Claude, ChatGPT) reject discovery documents that advertise
+  // plaintext endpoints, so only report http for genuinely local addresses.
+  // A misconfigured proxy that omits X-Forwarded-Proto must not downgrade us.
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
+
+  let proto;
+  if (forwardedProto) {
+    proto = forwardedProto;
+  } else if (req.secure) {
+    proto = "https";
+  } else {
+    proto = isLocal ? "http" : "https";
+  }
+
   return `${proto}://${host}`;
 }
 
