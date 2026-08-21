@@ -103,6 +103,37 @@ function rateLimit(opts = {}) {
 setInterval(() => {
   try { stateStore.pruneRates(Date.now() - 120_000); } catch (error) { console.error("[relay] Rate bucket cleanup failed:", error.message); }
 }, 60_000).unref();
+
+// ── Periodic in-memory state cleanup ────────────────────────────────────────
+// dynamicClients: Claude/ChatGPT register a new OAuth client per auth flow.
+// Without cleanup this Map grows unbounded. Expire after 2 days.
+setInterval(() => {
+  const cutoff = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  for (const [id, c] of dynamicClients) {
+    if (c.createdAt && c.createdAt < cutoff) dynamicClients.delete(id);
+  }
+}, 60 * 60 * 1000).unref();
+
+// sessionPrincipals: sessions expire on the PC after 30 min; mirror that here.
+setInterval(() => {
+  const cutoff = Date.now() - 35 * 60 * 1000;
+  for (const [sid, p] of sessionPrincipals) {
+    if (p.createdAt && p.createdAt < cutoff) sessionPrincipals.delete(sid);
+  }
+}, 5 * 60 * 1000).unref();
+
+// tokens: access tokens have a 1-hour TTL. They are removed from SQLite on
+// lookup, but accumulate in the in-memory `tokens` object until removed.
+// Purge expired access/auth tokens every 5 minutes to prevent memory growth.
+setInterval(() => {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [k, v] of Object.entries(tokens)) {
+    if (v && v.expires && v.expires < now) { delete tokens[k]; pruned++; }
+  }
+  if (pruned > 0) console.log(`[relay] Pruned ${pruned} expired token(s)`);
+}, 5 * 60 * 1000).unref();
+
 app.use(rateLimit());
 
 const server = http.createServer(app);
@@ -371,7 +402,7 @@ server.on("upgrade", (request, socket, head) => {
               if (data.sessionId && pending.code) {
                 codeSession.set(pending.code, data.sessionId);
                 if (pending.principal) {
-                  sessionPrincipals.set(data.sessionId, { code: pending.principal.code, tokenId: pending.principal.tokenId });
+                  sessionPrincipals.set(data.sessionId, { code: pending.principal.code, tokenId: pending.principal.tokenId, createdAt: Date.now() });
                 }
               }
               return pending.resolve(data);
@@ -637,7 +668,7 @@ function forwardToPC(code, req, res, extraPayload = {}) {
     if (bound && (!req.principal || bound.code !== req.principal.code || bound.tokenId !== req.principal.tokenId)) {
       return res.status(401).json({ error: "invalid_session", error_description: "MCP session is bound to a different authenticated principal." });
     }
-    if (req.principal && !bound) sessionPrincipals.set(incomingSessionId, { code: req.principal.code, tokenId: credToken(req) });
+    if (req.principal && !bound) sessionPrincipals.set(incomingSessionId, { code: req.principal.code, tokenId: credToken(req), createdAt: Date.now() });
   }
   _doForward(code, req, res, incomingSessionId, extraPayload);
 }
@@ -975,6 +1006,7 @@ const registerHandler = (req, res) => {
     redirect_uris,
     client_name:   body.client_name || "MCP Client",
     grant_types:   body.grant_types || ["authorization_code"],
+    createdAt:     Date.now(),
   });
 
   console.log("[oauth/register] Created dynamic client:", clientId);
