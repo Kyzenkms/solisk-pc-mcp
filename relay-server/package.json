@@ -3,8 +3,13 @@
   "version": "1.0.0",
   "description": "Cloud Relay for PC Control MCP Server using WebSockets and SSE",
   "main": "server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test":  "node test/oauth.test.js",
+    "test:ci": "node test/oauth.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -199,13 +199,31 @@ services:
   relay:
     build: ./relay
     restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     ports:
       - "80:3000"
     environment:
       PORT: "3000"
+      DATA_DIR: /app/data
+      PUBLIC_URL: "http://\${RELAY_DOMAIN}"
       RELAY_ADMIN_TOKEN: "\${RELAY_ADMIN_TOKEN}"
     volumes:
       - relay-data:/app/data
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/ready', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   relay-data:
@@ -228,17 +246,42 @@ services:
   relay:
     build: ./relay
     restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     environment:
       PORT: "3000"
+      DATA_DIR: /app/data
+      PUBLIC_URL: "https://\${RELAY_DOMAIN}"
       RELAY_ADMIN_TOKEN: "\${RELAY_ADMIN_TOKEN}"
     volumes:
       - relay-data:/app/data
     networks:
       - relay
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/ready', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     environment:
       RELAY_DOMAIN: "\${RELAY_DOMAIN}"
       ACME_EMAIL: "\${ACME_EMAIL}"
@@ -253,10 +296,12 @@ services:
     networks:
       - relay
     depends_on:
-      - relay
+      relay:
+        condition: service_healthy
 
 networks:
   relay:
+    internal: true
 
 volumes:
   relay-data:
@@ -270,8 +315,8 @@ FROM node:22-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
-COPY server.js keys.js scopes.js ./
+RUN npm install --omit=dev && npm cache clean --force
+COPY server.js keys.js scopes.js state-store.js ./
 
 RUN mkdir -p /app/data && chown -R node:node /app/data
 
@@ -305,9 +350,18 @@ PKGJSON
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/relay/server.js" ]; then
   cp "$SCRIPT_DIR/relay/"*.js "$INSTALL_DIR/relay/"
-else
-  # Script is running via curl pipe — write server.js inline
-  cat > "$INSTALL_DIR/relay/server.js" <<'RELAYSRV'
+  else
+    # Script is running via curl pipe. Fetch exact tracked relay sources instead
+    # of using a stale embedded copy that could miss security fixes.
+    REPO_RAW="https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/main/relay-server"
+    curl -fsSL "$REPO_RAW/server.js" -o "$INSTALL_DIR/relay/server.js"
+    curl -fsSL "$REPO_RAW/keys.js" -o "$INSTALL_DIR/relay/keys.js"
+    curl -fsSL "$REPO_RAW/scopes.js" -o "$INSTALL_DIR/relay/scopes.js"
+    curl -fsSL "$REPO_RAW/state-store.js" -o "$INSTALL_DIR/relay/state-store.js"
+    cat > "$INSTALL_DIR/relay/.source" <<EOF
+$REPO_RAW
+EOF
+    : <<'RELAYSRV'
 "use strict";
 const express = require("express");
 const { WebSocketServer } = require("ws");
@@ -366,14 +420,41 @@ const sseEventBuf = new Map();
 const codeSession = new Map();
 const sessionInit = new Map();
 const DATA_DIR = process.env.DATA_DIR || __dirname;
-try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+fs.mkdirSync(DATA_DIR, { recursive: true });
 const ROOMS_FILE = path.join(DATA_DIR, "rooms.json");
 const TOKENS_FILE = path.join(DATA_DIR, "oauth_tokens.json");
-let rooms = {};
-let tokens = {};
-try { if (fs.existsSync(ROOMS_FILE)) rooms = JSON.parse(fs.readFileSync(ROOMS_FILE, "utf8")); } catch {}
-try { if (fs.existsSync(TOKENS_FILE)) tokens = JSON.parse(fs.readFileSync(TOKENS_FILE, "utf8")); } catch {}
-function saveState() { try { fs.writeFileSync(ROOMS_FILE, JSON.stringify(rooms, null, 2)); } catch {} try { fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2)); } catch {} }
+function readState(file, fallback) {
+  const candidates = [file, `${file}.bak`];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const value = JSON.parse(fs.readFileSync(candidate, "utf8"));
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        if (candidate !== file) console.error(`[relay] Recovered ${path.basename(file)} from backup`);
+        return value;
+      }
+    } catch (error) {
+      console.error(`[relay] Could not read ${path.basename(candidate)}:`, error.message);
+    }
+  }
+  return fallback;
+}
+function writeState(file, value) {
+  const serialized = JSON.stringify(value, null, 2);
+  const temp = `${file}.${process.pid}.tmp`;
+  const backup = `${file}.bak`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (fs.existsSync(file)) fs.copyFileSync(file, backup);
+  fs.writeFileSync(temp, serialized, { encoding: "utf8", mode: 0o600 });
+  fs.chmodSync(temp, 0o600);
+  fs.renameSync(temp, file);
+}
+let rooms = readState(ROOMS_FILE, {});
+let tokens = readState(TOKENS_FILE, {});
+function saveState() {
+  try { writeState(ROOMS_FILE, rooms); } catch (error) { console.error("[relay] Could not persist rooms:", error.message); }
+  try { writeState(TOKENS_FILE, tokens); } catch (error) { console.error("[relay] Could not persist OAuth tokens:", error.message); }
+}
 const REQUEST_TIMEOUT = 60000;
 function randomToken(bytes = 32) { return crypto.randomBytes(bytes).toString("hex"); }
 function escHtml(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
@@ -513,14 +594,7 @@ server.listen(PORT, () => {
 process.on("SIGINT", () => { for (const [, ws] of clients) { try { ws.close(); } catch {} } server.close(() => process.exit(0)); });
 RELAYSRV
 
-  # keys.js (minimal — functions duplicated above in server.js)
-  cat > "$INSTALL_DIR/relay/keys.js" <<'KEYSJS'
-module.exports = { hashKey: require('crypto'), verifyKey: () => false, normalizeScopes: () => [], newKeyBytes: () => [], FULL_SCOPES: [] };
-KEYSJS
 
-  cat > "$INSTALL_DIR/relay/scopes.js" <<'SCOPESJS'
-module.exports = { toolScopeOf: () => "", hasScope: () => true };
-SCOPESJS
 fi
 
 if [ "$DOMAIN_TYPE" = "2" ]; then

@@ -10,6 +10,9 @@ scratch/
 *.log
 oauth_tokens.json
 rooms.json
+relay.sqlite
+relay.sqlite-*
+*.json.bak
 .DS_Store
 .env
 *.pfx

@@ -19,6 +19,7 @@ const fs      = require("fs");
 const path    = require("path");
 const { hashKey, verifyKey, normalizeScopes, newKeyBytes, FULL_SCOPES } = require("./keys");
 const { toolScopeOf, hasScope } = require("./scopes");
+const { createStateStore } = require("./state-store");
 
 const app = express();
 
@@ -81,33 +82,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Rate limiting (per-IP, in-memory) ─────────────────────────────────────────
-const rateBuckets = new Map();
+// ── Rate limiting (transactional SQLite buckets) ─────────────────────────────
 function rateLimit(opts = {}) {
   const windowMs = opts.windowMs || 60_000;
   const max = opts.max || 300;
   return (req, res, next) => {
     const ip = req.ip || req.socket.remoteAddress || "anon";
-    const now = Date.now();
-    if (!rateBuckets.has(ip)) rateBuckets.set(ip, []);
-    const b = rateBuckets.get(ip);
-    while (b.length && b[0].t < now - windowMs) b.shift();
-    const count = b.reduce((s, e) => s + e.c, 0);
-    if (count >= max) {
-      res.header("Retry-After", Math.ceil(windowMs / 1000));
-      return res.status(429).json({ error: "rate_limited", error_description: "Too many requests." });
+    try {
+      if (!stateStore.consumeRate(`global:${ip}`, Date.now(), windowMs, max)) {
+        res.header("Retry-After", Math.ceil(windowMs / 1000));
+        return res.status(429).json({ error: "rate_limited", error_description: "Too many requests." });
+      }
+      next();
+    } catch (error) {
+      console.error("[relay] Rate limiter unavailable:", error.message);
+      return res.status(503).json({ error: "service_unavailable", error_description: "Rate limiter unavailable." });
     }
-    const last = b[b.length - 1];
-    if (last && last.t > now - 1000) last.c++; else b.push({ t: now, c: 1 });
-    next();
   };
 }
 setInterval(() => {
-  const now = Date.now();
-  for (const [key, b] of rateBuckets) {
-    while (b.length && b[0].t < now - 120_000) b.shift();
-    if (!b.length) rateBuckets.delete(key);
-  }
+  try { stateStore.pruneRates(Date.now() - 120_000); } catch (error) { console.error("[relay] Rate bucket cleanup failed:", error.message); }
 }, 60_000).unref();
 app.use(rateLimit());
 
@@ -118,18 +112,52 @@ const wss = new WebSocketServer({ noServer: true });
 const clients       = new Map();  // code -> WebSocket (the local PC)
 const pendingReqs   = new Map();  // requestId -> { res, timer, code, sessionId }
 const sseStreams    = new Map();  // sessionId -> res (SSE to web client)
+const sessionPrincipals = new Map(); // sessionId -> authenticated room principal
 const sseEventBuf  = new Map();  // sessionId -> [{ event, data, ts }, ...] (buffer for ChatGPT timing race)
 const codeSession   = new Map();  // code -> sessionId  (cached session per PC for stateless ChatGPT calls)
 const sessionInit   = new Map();  // code -> Promise<sessionId|null> (deduplicates concurrent auto-init)
 
-// OAuth state (self-hosted on relay)
-const ROOMS_FILE    = path.join(__dirname, "rooms.json");
-const TOKENS_FILE   = path.join(__dirname, "oauth_tokens.json");
-let rooms  = {};   // code -> { keys: [ { id, label, scopes, salt, hash, createdAt } ] }
-let tokens = {};   // token -> { code, type, expires, scopes }
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const stateStore = createStateStore(DATA_DIR);
+const isProduction = process.env.NODE_ENV === "production";
+if (isProduction && (!process.env.RELAY_ADMIN_TOKEN || process.env.RELAY_ADMIN_TOKEN.length < 32)) {
+  throw new Error("RELAY_ADMIN_TOKEN must be set to at least 32 characters in production");
+}
+if (isProduction && !process.env.PUBLIC_URL) {
+  console.warn("[relay] PUBLIC_URL is unset; endpoint URLs depend on reverse-proxy headers");
+}
+// Legacy file locations: DATA_DIR takes priority, __dirname is the fallback for
+// installations that previously used the server directory as the data directory.
+const ROOMS_FILE          = path.join(DATA_DIR, "rooms.json");
+const TOKENS_FILE         = path.join(DATA_DIR, "oauth_tokens.json");
+const LEGACY_ROOMS_FILE   = path.join(__dirname, "rooms.json");
+const LEGACY_TOKENS_FILE  = path.join(__dirname, "oauth_tokens.json");
 
-try { if (fs.existsSync(ROOMS_FILE))  rooms  = JSON.parse(fs.readFileSync(ROOMS_FILE,  "utf8")); } catch {}
-try { if (fs.existsSync(TOKENS_FILE)) tokens = JSON.parse(fs.readFileSync(TOKENS_FILE, "utf8")); } catch {}
+/**
+ * Load named state from SQLite.  If not yet migrated, look for a JSON file
+ * first in DATA_DIR (the configured data directory, which may differ from
+ * __dirname) and then in __dirname (the legacy location used by early
+ * installations). This ensures that test harnesses that write rooms.json into
+ * a temp DATA_DIR have their data picked up correctly.
+ */
+function loadState(name, primaryFile, legacyFile) {
+  const stored = stateStore.read(name, null);
+  if (stored) return stored;
+
+  // Try the primary (DATA_DIR) location first, then the legacy __dirname location.
+  for (const file of [primaryFile, legacyFile]) {
+    if (!file) continue;
+    const migrated = stateStore.migrateJson(name, file);
+    if (migrated) {
+      stateStore.write({ [name]: migrated });
+      return migrated;
+    }
+  }
+  return {};
+}
+
+let rooms = loadState("rooms",  ROOMS_FILE,  LEGACY_ROOMS_FILE);
+let tokens = loadState("tokens", TOKENS_FILE, LEGACY_TOKENS_FILE);
 
 // ── Migration: legacy rooms stored a single PLAINTEXT `apiKey`. Convert to a
 //    per-room key list where every key is stored as a scrypt hash. Nothing is
@@ -152,13 +180,13 @@ try { if (fs.existsSync(TOKENS_FILE)) tokens = JSON.parse(fs.readFileSync(TOKENS
     }
   }
   if (changed) {
-    try { fs.writeFileSync(ROOMS_FILE, JSON.stringify(rooms, null, 2)); } catch {}
+    try { stateStore.write({ rooms }); } catch (error) { console.error("[relay] Could not persist migrated rooms:", error.message); }
   }
 })();
 
 function saveState() {
-  try { fs.writeFileSync(ROOMS_FILE,  JSON.stringify(rooms,  null, 2)); } catch {}
-  try { fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2)); } catch {}
+  try { stateStore.write({ rooms, tokens }); }
+  catch (error) { console.error("[relay] Could not persist relay state:", error.message); }
 }
 
 const REQUEST_TIMEOUT = 60_000; // 60s for tool execution
@@ -342,6 +370,9 @@ server.on("upgrade", (request, socket, head) => {
               // Cache the session ID if initialize succeeded
               if (data.sessionId && pending.code) {
                 codeSession.set(pending.code, data.sessionId);
+                if (pending.principal) {
+                  sessionPrincipals.set(data.sessionId, { code: pending.principal.code, tokenId: pending.principal.tokenId });
+                }
               }
               return pending.resolve(data);
             }
@@ -601,6 +632,13 @@ function forwardToPC(code, req, res, extraPayload = {}) {
     return;
   }
 
+  if (incomingSessionId) {
+    const bound = sessionPrincipals.get(incomingSessionId);
+    if (bound && (!req.principal || bound.code !== req.principal.code || bound.tokenId !== req.principal.tokenId)) {
+      return res.status(401).json({ error: "invalid_session", error_description: "MCP session is bound to a different authenticated principal." });
+    }
+    if (req.principal && !bound) sessionPrincipals.set(incomingSessionId, { code: req.principal.code, tokenId: credToken(req) });
+  }
   _doForward(code, req, res, incomingSessionId, extraPayload);
 }
 
@@ -627,7 +665,7 @@ function _doForward(code, req, res, sessionId, extraPayload = {}) {
     }
   }, timeoutMs);
 
-  pendingReqs.set(requestId, { res, timer, code, sessionId });
+  pendingReqs.set(requestId, { res, timer, code, sessionId, principal: req.principal });
 
   // The relay has already authenticated the external client (Claude/ChatGPT).
   // When forwarding to the local PC we replace the external OAuth/user token
@@ -727,6 +765,20 @@ function tokenScopesOf(rec) {
   return FULL_SCOPES.slice();
 }
 
+function canonicalResource(req, code) {
+  const base = baseUrl(req).replace(/\/+$/, "");
+  return `${base}/mcp/${encodeURIComponent(code)}`;
+}
+
+function validResource(req, code, value) {
+  return typeof value === "string" && value === canonicalResource(req, code);
+}
+
+function exactRegisteredRedirect(clientId, uri) {
+  const client = dynamicClients.get(clientId);
+  return Boolean(client && Array.isArray(client.redirect_uris) && client.redirect_uris.includes(uri));
+}
+
 function credToken(req) {
   const auth = req.headers["authorization"] || "";
   return auth.startsWith("Bearer ") ? auth.slice(7).trim() : auth.trim();
@@ -741,7 +793,7 @@ function requireAuth(req, res, next) {
     /^\/mcp\/[^/]+\/oauth\/authorize$/.test(p) ||
     p.includes("/oauth/token") || p.includes("/oauth/register") || p.includes("/oauth/revoke") ||
     p.includes("/.well-known/") || p === "/logo.png" || p === "/legal" || p === "/favicon.ico" ||
-    p === "/openapi.json" || p.startsWith("/admin/") || p === "/health" || p === "/";
+    p === "/openapi.json" || p.startsWith("/admin/") || p === "/health" || p === "/ready" || p === "/";
   if (isOAuthConsentOrDiscovery) {
     return next();
   }
@@ -774,6 +826,16 @@ app.get("/health", (req, res) => {
     status: "ok",
     uptime: Math.floor(process.uptime()),
   });
+});
+
+app.get("/ready", (req, res) => {
+  try {
+    stateStore.read("rooms", {});
+    stateStore.read("tokens", {});
+    res.json({ status: "ready", database: "ok" });
+  } catch (error) {
+    res.status(503).json({ status: "not_ready", database: "error", error: error.message });
+  }
 });
 
 // ── Root ──────────────────────────────────────────────────────────────────────
@@ -821,9 +883,9 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
     scopes_supported:                  ["mcp:tools", "mcp:resources"],
     response_types_supported:          ["code"],
     grant_types_supported:             ["authorization_code", "refresh_token"],
-    code_challenge_methods_supported:  ["S256", "plain"],
+    code_challenge_methods_supported:  ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
-    require_pkce:                      false,
+    require_pkce:                      true,
   });
 });
 
@@ -855,21 +917,29 @@ app.get(/\/\.well-known\/openid-configuration(?:\/[^/]*)?$/, (req, res) => {
   });
 });
 
-app.get("/mcp/:code/.well-known/oauth-authorization-server", (req, res) => {
-  const base = `${baseUrl(req)}/mcp/${req.params.code}`;
-  res.json({
-    issuer:                            base,
-    authorization_endpoint:            `${base}/oauth/authorize`,
-    token_endpoint:                    `${base}/oauth/token`,
-    revocation_endpoint:               `${base}/oauth/revoke`,
-    registration_endpoint:             `${base}/oauth/register`,
-    scopes_supported:                  ["mcp:tools", "mcp:resources"],
-    response_types_supported:          ["code"],
-    grant_types_supported:             ["authorization_code", "refresh_token"],
-    code_challenge_methods_supported:  ["S256", "plain"],
+function authorizationServerMetadata(req, code) {
+  const base = `${baseUrl(req)}/mcp/${code}`;
+  return {
+    issuer: base,
+    authorization_endpoint: `${base}/oauth/authorize`,
+    token_endpoint: `${base}/oauth/token`,
+    revocation_endpoint: `${base}/oauth/revoke`,
+    registration_endpoint: `${base}/oauth/register`,
+    scopes_supported: ["mcp:tools", "mcp:resources"],
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic", "none"],
-    require_pkce:                      false,
-  });
+    require_pkce: true,
+  };
+}
+
+app.get("/.well-known/oauth-authorization-server/mcp/:code", (req, res) => {
+  res.json(authorizationServerMetadata(req, req.params.code));
+});
+
+app.get("/mcp/:code/.well-known/oauth-authorization-server", (req, res) => {
+  res.json(authorizationServerMetadata(req, req.params.code));
 });
 
 // ── OAuth Dynamic Client Registration ────────────────────────────────────────
@@ -886,8 +956,11 @@ const registerHandler = (req, res) => {
   for (const uriStr of redirect_uris) {
     try {
       const parsed = new URL(uriStr);
-      const isLoopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+      const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
       const isTrusted = trustedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith("." + d));
+      if (parsed.hash || (isLoopback ? !["http:", "https:"].includes(parsed.protocol) : parsed.protocol !== "https:")) {
+        return res.status(400).json({ error: "invalid_redirect_uri", error_description: "Redirect URI must use HTTPS, except loopback development URIs." });
+      }
       if (!isLoopback && !isTrusted) {
         return res.status(400).json({ error: "invalid_redirect_uri", error_description: `Redirect URI domain '${parsed.hostname}' is not in the trusted domain whitelist.` });
       }
@@ -924,6 +997,7 @@ function buildAuthPage(code, query) {
   const redirectUri = escHtml(query.redirect_uri || "");
   const state       = escHtml(query.state || "");
   const scope       = escHtml(query.scope || "mcp:tools mcp:resources");
+  const resource    = escHtml(query.resource || "");
   const clientId    = escHtml(query.client_id || "");
   const codeChallenge       = escHtml(query.code_challenge || "");
   const codeChallengeMethod = escHtml(query.code_challenge_method || "S256");
@@ -1094,6 +1168,7 @@ function buildAuthPage(code, query) {
     <input type="hidden" name="redirect_uri" value="${redirectUri}">
     <input type="hidden" name="state" value="${state}">
     <input type="hidden" name="client_id" value="${clientId}">
+    <input type="hidden" name="resource" value="${resource}">
     <input type="hidden" name="code_challenge" value="${codeChallenge}">
     <input type="hidden" name="code_challenge_method" value="${codeChallengeMethod}">
     <input type="hidden" name="scope" value="${scope}">
@@ -1120,38 +1195,31 @@ const authorizeGetHandler = (req, res) => {
 app.get("/oauth/authorize",           authorizeGetHandler);
 app.get("/mcp/:code/oauth/authorize", authorizeGetHandler);
 
-// Helper to validate OAuth redirect_uri
+// Redirect URIs are accepted only when exactly registered for this client.
 function isValidRedirectUri(clientId, uriStr) {
-  if (!uriStr) return false;
-  try {
-    const parsed = new URL(uriStr);
-    // Allow standard localhost/loopback
-    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return true;
-    
-    // Check dynamic client registration
-    if (clientId && dynamicClients.has(clientId)) {
-      const client = dynamicClients.get(clientId);
-      if (Array.isArray(client.redirect_uris) && client.redirect_uris.length > 0) {
-        return client.redirect_uris.some(r => r === uriStr || uriStr.startsWith(r));
-      }
-    }
-    
-    // Whitelist trusted AI client domains
-    const trustedDomains = ["claude.ai", "chatgpt.com", "openai.com", "cursor.sh", "cursor.com"];
-    return trustedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith("." + d));
-  } catch {
-    return false;
-  }
+  return exactRegisteredRedirect(clientId, uriStr);
 }
 
 // POST /oauth/authorize — handle form submission
 const authorizePostHandler = (req, res) => {
   const code = req.params.code || getCode(req) || "default-pc";
-  const { action, api_key, redirect_uri, state, client_id, code_challenge, code_challenge_method, scope } = req.body || {};
-
+  const { action, api_key, redirect_uri, state, client_id, code_challenge, code_challenge_method, scope, resource } = req.body || {};
   const targetUri = redirect_uri || "https://claude.ai/api/auth/callback/connector";
-  if (!isValidRedirectUri(client_id, targetUri)) {
+
+  if (!client_id || !dynamicClients.has(client_id)) {
+    return res.status(400).send("Unknown OAuth client.");
+  }
+  if (!exactRegisteredRedirect(client_id, targetUri)) {
     return res.status(400).send("Invalid or unapproved redirect_uri.");
+  }
+  if (!state || typeof state !== "string" || state.length < 16 || state.length > 512) {
+    return res.status(400).send("A valid state parameter is required.");
+  }
+  if (!code_challenge || code_challenge_method !== "S256") {
+    return res.status(400).send("S256 PKCE is required.");
+  }
+  if (!validResource(req, code, resource)) {
+    return res.status(400).send("Invalid resource.");
   }
 
   if (action === "deny") {
@@ -1234,8 +1302,9 @@ const authorizePostHandler = (req, res) => {
     scope:                  grantedScopes.join(" "),
     scopes:                 grantedScopes,
     key_id:                 authorizedKeyId || null,
-    code_challenge:         code_challenge || "",
-    code_challenge_method:  code_challenge_method || "S256",
+    resource:              canonicalResource(req, code),
+    code_challenge:         code_challenge,
+    code_challenge_method:  "S256",
     type:                   "auth_code",
     expires:                Date.now() + 5 * 60 * 1000,
   };
@@ -1263,21 +1332,27 @@ const tokenHandler = (req, res) => {
     if (!record || record.type !== "auth_code" || record.expires < Date.now()) {
       return res.status(400).json({ error: "invalid_grant", error_description: "Authorization code not found or expired." });
     }
+    if (!dynamicClients.has(body.client_id)) {
+      return res.status(400).json({ error: "invalid_client", error_description: "Unknown OAuth client." });
+    }
+    const registeredClient = dynamicClients.get(body.client_id);
+    if (registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
+      return res.status(401).json({ error: "invalid_client", error_description: "Invalid client credentials." });
+    }
 
-    if (record.client_id && body.client_id && record.client_id !== body.client_id) {
+    if (record.client_id && record.client_id !== body.client_id) {
       return res.status(400).json({ error: "invalid_grant", error_description: "client_id mismatch." });
     }
-    if (record.redirect_uri && body.redirect_uri && record.redirect_uri !== body.redirect_uri) {
+    if (record.redirect_uri && record.redirect_uri !== body.redirect_uri) {
       return res.status(400).json({ error: "invalid_grant", error_description: "redirect_uri mismatch." });
     }
-    if (record.code_challenge) {
-      const verifier = String(body.code_verifier || "");
-      const actual = record.code_challenge_method === "plain"
-        ? verifier
-        : crypto.createHash("sha256").update(verifier).digest("base64url");
-      if (!verifier || actual !== record.code_challenge) {
-        return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed." });
-      }
+    const verifier = String(body.code_verifier || "");
+    const actual = verifier ? crypto.createHash("sha256").update(verifier).digest("base64url") : "";
+    if (!verifier || actual !== record.code_challenge) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "S256 PKCE verification failed." });
+    }
+    if (!validResource(req, record.code, body.resource) || body.resource !== record.resource) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "resource mismatch." });
     }
 
     delete tokens[body.code]; // single-use after all validation succeeds
@@ -1289,8 +1364,8 @@ const tokenHandler = (req, res) => {
       ? record.scopes
       : (record.scope || "").split(/\s+/).filter(Boolean);
 
-    tokens[access_token]  = { code: record.code, type: "access", expires: Date.now() + 3600 * 1000, scopes: grantedScopes };
-    tokens[refresh_token] = { code: record.code, type: "refresh", scopes: grantedScopes };
+    tokens[access_token]  = { code: record.code, type: "access", client_id: record.client_id, resource: record.resource, expires: Date.now() + 3600 * 1000, scopes: grantedScopes };
+    tokens[refresh_token] = { code: record.code, type: "refresh", client_id: record.client_id, resource: record.resource, scopes: grantedScopes };
     saveState();
 
     return res.json({
@@ -1307,6 +1382,19 @@ const tokenHandler = (req, res) => {
     if (!record || record.type !== "refresh") {
       return res.status(400).json({ error: "invalid_grant" });
     }
+    if (!dynamicClients.has(body.client_id)) {
+      return res.status(400).json({ error: "invalid_client", error_description: "Unknown OAuth client." });
+    }
+    const registeredClient = dynamicClients.get(body.client_id);
+    if (registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
+      return res.status(401).json({ error: "invalid_client", error_description: "Invalid client credentials." });
+    }
+    if (body.client_id && record.client_id && body.client_id !== record.client_id) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "client_id mismatch." });
+    }
+    if (!validResource(req, record.code, body.resource) || body.resource !== record.resource) {
+      return res.status(400).json({ error: "invalid_grant", error_description: "resource mismatch." });
+    }
 
     const access_token  = randomToken(32);
     const refresh_token = randomToken(32);
@@ -1315,8 +1403,8 @@ const tokenHandler = (req, res) => {
       ? record.scopes
       : ["pc:file:read", "pc:file:write", "pc:file:list", "pc:process:run", "pc:process:list", "pc:process:kill"];
 
-    tokens[access_token]         = { code: record.code, type: "access", expires: Date.now() + 3600 * 1000, scopes: grantedScopes };
-    tokens[refresh_token]        = { code: record.code, type: "refresh", scopes: grantedScopes };
+    tokens[access_token]         = { code: record.code, type: "access", client_id: record.client_id, resource: record.resource, expires: Date.now() + 3600 * 1000, scopes: grantedScopes };
+    tokens[refresh_token]        = { code: record.code, type: "refresh", client_id: record.client_id, resource: record.resource, scopes: grantedScopes };
     delete tokens[body.refresh_token];
     saveState();
 

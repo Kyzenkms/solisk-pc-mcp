@@ -1,0 +1,8 @@
+node_modules
+*.log
+*.json.bak
+rooms.json
+oauth_tokens.json
+relay.sqlite-shm
+relay.sqlite-wal
+.env
