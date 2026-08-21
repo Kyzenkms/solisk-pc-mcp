@@ -763,7 +763,7 @@ function resolvePrincipal(req) {
     if (rec && rec.type === "access") {
       if (rec.expires && rec.expires < Date.now()) return null;
       if (rec.code && rec.code !== code) return null;
-      return { code, type: "oauth", label: "oauth", scopes: Array.isArray(rec.scopes) && rec.scopes.length ? rec.scopes.slice() : tokenScopesOf(rec) };
+      return { code, type: "oauth", label: "oauth", scopes: Array.isArray(rec.scopes) && rec.scopes.length ? rec.scopes.slice() : tokenScopesOf(rec), tokenId: token };
     }
     // Per-user key belonging to this room?
     const room = rooms[code];
@@ -773,7 +773,7 @@ function resolvePrincipal(req) {
       for (const k of room.keys) {
         if (!k || typeof k !== "object" || !k.salt || !k.hash) continue;
         if (verifyKey(t, k.salt, k.hash)) {
-          return { code, type: "key", keyId: k.id || k.label, label: k.label, scopes: Array.isArray(k.scopes) ? k.scopes : FULL_SCOPES.slice() };
+          return { code, type: "key", keyId: k.id || k.label, label: k.label, scopes: Array.isArray(k.scopes) ? k.scopes : FULL_SCOPES.slice(), tokenId: t };
         }
       }
     }
@@ -782,10 +782,10 @@ function resolvePrincipal(req) {
   // No code in URL → derive room from the credential itself
   if (token) {
     const owner = findKeyOwner(token);
-    if (owner) return { ...owner, type: "key" };
+    if (owner) return { ...owner, type: "key", tokenId: token };
     const rec = tokens[token];
     if (rec && rec.type === "access" && rec.code && (!rec.expires || rec.expires >= Date.now())) {
-      return { code: rec.code, type: "oauth", label: "oauth", scopes: Array.isArray(rec.scopes) && rec.scopes.length ? rec.scopes.slice() : tokenScopesOf(rec) };
+      return { code: rec.code, type: "oauth", label: "oauth", scopes: Array.isArray(rec.scopes) && rec.scopes.length ? rec.scopes.slice() : tokenScopesOf(rec), tokenId: token };
     }
   }
   return null;
