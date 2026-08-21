@@ -1039,160 +1039,299 @@ function buildAuthPage(code, query) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Authorize Connection — PC Control MCP</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Authorize Access — Solisk PC Control MCP</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #061011;
+      --bg-deep: #030808;
+      --surface: #0a1718;
+      --surface-2: #102123;
+      --line: #284548;
+      --line-soft: #183033;
+      --text: #edf7f6;
+      --muted: #9bb1b0;
+      --signal: #66e3d3;
+      --signal-dark: #103d3a;
+      --amber: #f0b36a;
+      --danger: #ff8078;
+    }
     body {
-      font-family: 'Inter', sans-serif;
-      background: radial-gradient(ellipse at 60% 10%, rgba(139, 92, 246, 0.15) 0%, transparent 60%),
-                  radial-gradient(ellipse at 10% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 60%),
-                  #0b0b0f;
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 50% 0%, rgba(102, 227, 211, 0.12) 0%, transparent 65%),
+        linear-gradient(rgba(102, 227, 211, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(102, 227, 211, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
-      color: #e5e7eb;
+      padding: 24px 16px;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
     }
     .card {
-      background: rgba(26, 26, 36, 0.9);
+      background: rgba(10, 23, 24, 0.92);
       backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 20px;
-      padding: 40px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 36px 32px;
       width: 100%;
-      max-width: 440px;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.1);
+      max-width: 450px;
+      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 0 1px rgba(102, 227, 211, 0.08);
+      position: relative;
     }
-    .logo { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
-    .logo-icon {
-      width: 44px; height: 44px;
-      background: linear-gradient(135deg, #8B5CF6, #3B82F6);
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent 0%, var(--signal) 50%, transparent 100%);
+      border-top-left-radius: 14px;
+      border-top-right-radius: 14px;
     }
-    .logo-icon svg { width: 22px; height: 22px; color: #fff; }
-    .logo-name  { font-size: 16px; font-weight: 700; color: #fff; }
-    .logo-sub   { font-size: 12px; color: #6b7280; }
-    h1 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .logo-mark {
+      width: 46px;
+      height: 46px;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #050B0D 0%, #15272B 100%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+    .brand-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--signal);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 3px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
     .client-pill {
-      display: inline-block;
-      background: rgba(139,92,246,0.15);
-      border: 1px solid rgba(139,92,246,0.3);
-      color: #a78bfa;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--signal-dark);
+      border: 1px solid rgba(102, 227, 211, 0.3);
+      color: var(--signal);
+      font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       font-weight: 600;
-      padding: 3px 12px;
+      padding: 4px 12px;
       border-radius: 20px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
-    .desc { font-size: 13px; color: #9ca3af; line-height: 1.5; margin-bottom: 20px; }
-    .scope-container { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 4px; margin-bottom: 20px; }
-    .scope-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; }
-    .scope-row:hover { background: rgba(255,255,255,0.03); }
-    .scope-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .scope-icon svg { width: 16px; height: 16px; }
-    .scope-title { font-size: 13px; font-weight: 600; color: #e5e7eb; }
-    .scope-desc  { font-size: 11px; color: #6b7280; margin-top: 1px; }
-    .warning-box {
-      background: rgba(245,158,11,0.08);
-      border: 1px solid rgba(245,158,11,0.2);
+    .client-pill::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--signal);
+      box-shadow: 0 0 8px var(--signal);
+    }
+    .desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-bottom: 20px;
+    }
+    .pc-name {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--signal);
+      font-weight: 600;
+      background: rgba(102, 227, 211, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(102, 227, 211, 0.2);
+    }
+    .scope-container {
+      background: var(--surface-2);
+      border: 1px solid var(--line-soft);
       border-radius: 10px;
-      padding: 12px 16px;
+      padding: 6px;
+      margin-bottom: 20px;
+    }
+    .scope-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .scope-row:hover { background: rgba(102, 227, 211, 0.04); }
+    .scope-icon {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      background: rgba(102, 227, 211, 0.1);
+      border: 1px solid rgba(102, 227, 211, 0.2);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .scope-icon svg { width: 17px; height: 17px; stroke: var(--signal); }
+    .scope-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .scope-desc  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .warning-box {
+      background: rgba(240, 179, 106, 0.08);
+      border: 1px solid rgba(240, 179, 106, 0.25);
+      border-radius: 8px;
+      padding: 12px 14px;
       display: flex;
       gap: 10px;
       align-items: flex-start;
-      margin-bottom: 24px;
+      margin-bottom: 22px;
       font-size: 12px;
-      color: #fbbf24;
+      color: var(--amber);
       line-height: 1.5;
     }
-    .warning-icon { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; }
-    label { display: block; font-size: 12px; font-weight: 500; color: #9ca3af; margin-bottom: 6px; }
-    input[type="password"] {
-      width: 100%; padding: 12px 16px;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 10px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 14px;
-      outline: none;
-      transition: border 0.2s;
-      margin-bottom: 20px;
+    .warning-icon { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; stroke: var(--amber); }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    input[type="password"]:focus { border-color: #8B5CF6; box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
-    input[type="password"]::placeholder { color: #4b5563; }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg-deep);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s;
+      margin-bottom: 22px;
+    }
+    input[type="password"]:focus {
+      border-color: var(--signal);
+      box-shadow: 0 0 0 3px rgba(102, 227, 211, 0.15);
+    }
+    input[type="password"]::placeholder { color: #435b5c; }
     .btns { display: flex; gap: 12px; }
     .btn-allow {
-      flex: 1; padding: 13px;
-      background: linear-gradient(135deg, #7C3AED, #4F46E5);
-      color: #fff; border: none; border-radius: 10px;
-      font-family: inherit; font-size: 14px; font-weight: 600;
+      flex: 1;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #103d3a 0%, #18524d 100%);
+      color: var(--signal);
+      border: 1px solid var(--signal);
+      border-radius: 8px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
-      box-shadow: 0 4px 15px rgba(124,58,237,0.4);
+      box-shadow: 0 4px 16px rgba(102, 227, 211, 0.15);
     }
-    .btn-allow:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,58,237,0.5); }
+    .btn-allow:hover {
+      background: linear-gradient(135deg, #154c48 0%, #1e6661 100%);
+      box-shadow: 0 6px 24px rgba(102, 227, 211, 0.3);
+      transform: translateY(-1px);
+    }
     .btn-deny {
-      padding: 13px 20px;
+      padding: 12px 18px;
       background: transparent;
-      color: #6b7280; border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      font-family: inherit; font-size: 14px; font-weight: 500;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .btn-deny:hover { background: rgba(255,255,255,0.05); color: #fff; }
-    .footer { margin-top: 20px; text-align: center; font-size: 11px; color: #374151; }
-    .pc-name { color: #8B5CF6; font-weight: 600; }
+    .btn-deny:hover {
+      background: var(--surface-2);
+      color: var(--text);
+      border-color: var(--line-soft);
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line-soft);
+      text-align: center;
+      font-size: 11px;
+      color: #435b5c;
+    }
   </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">
-    <div class="logo-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+  <div class="header">
+    <div class="logo-mark">
+      <svg viewBox="0 0 512 512" width="28" height="28">
+        <path d="M 176 192 L 152 192 C 143 192 136 199 136 208 V 304 C 136 312 143 320 152 320 H 176" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 336 192 L 360 192 C 368 192 376 199 376 208 V 304 C 376 312 368 320 360 320 H 336" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 184 224 L 224 256 L 184 288" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 244 288 H 280" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 288 224 L 328 256 L 288 288" fill="none" stroke="#D1FF91" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <div>
-      <div class="logo-name">PC Control MCP</div>
-      <div class="logo-sub">Access Authorization</div>
+      <div class="brand-title">Solisk PC Control</div>
+      <div class="brand-sub">Access Authorization</div>
     </div>
   </div>
 
   <h1>Authorize Connection</h1>
   <div class="client-pill">${escHtml(clientName)}</div>
-  <p class="desc">An AI assistant is requesting permission to control your PC <span class="pc-name">${escHtml(code)}</span>. Enter your API key to authorize.</p>
+  <p class="desc">An AI assistant is requesting permission to control your PC <span class="pc-name">${escHtml(code)}</span>. Enter your room API key to authorize.</p>
 
   <div class="scope-container">
     <div class="scope-row">
-      <div class="scope-icon" style="background:rgba(139,92,246,0.15)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      <div class="scope-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       </div>
       <div>
-        <div class="scope-title">System Control</div>
-        <div class="scope-desc">Execute commands, control mouse &amp; keyboard</div>
+        <div class="scope-title">System &amp; Process Control</div>
+        <div class="scope-desc">Execute commands, control mouse/keyboard, run shell</div>
       </div>
     </div>
     <div class="scope-row">
-      <div class="scope-icon" style="background:rgba(59,130,246,0.15)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><path d="M3 3h18M3 12h18M3 21h18"/></svg>
+      <div class="scope-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 3h18M3 12h18M3 21h18"/></svg>
       </div>
       <div>
-        <div class="scope-title">File &amp; Process Access</div>
-        <div class="scope-desc">Read/write files, manage running processes</div>
+        <div class="scope-title">File &amp; Workspace Access</div>
+        <div class="scope-desc">Read, write, edit files and inspect system directories</div>
       </div>
     </div>
   </div>
 
   <div class="warning-box">
-    <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
     </svg>
-    <div>Only authorize if you initiated this connection. This grants the AI full control of your PC.</div>
+    <div>Only authorize if you initiated this connection in your AI client. This grants the assistant remote access to your PC.</div>
   </div>
 
   <form method="POST">
@@ -1204,15 +1343,15 @@ function buildAuthPage(code, query) {
     <input type="hidden" name="code_challenge" value="${codeChallenge}">
     <input type="hidden" name="code_challenge_method" value="${codeChallengeMethod}">
     <input type="hidden" name="scope" value="${scope}">
-    <label>PC Control API Key</label>
-    <input type="password" name="api_key" required placeholder="Paste your API key here…">
+    <label>PC Room API Key</label>
+    <input type="password" name="api_key" required placeholder="Paste your room API key here…">
     <div class="btns">
       <button type="submit" name="action" value="deny" class="btn-deny">Deny</button>
       <button type="submit" name="action" value="allow" class="btn-allow">Allow Access</button>
     </div>
   </form>
 
-  <div class="footer">Relay authorization server · PC Control MCP</div>
+  <div class="footer">Solisk Cloud Relay · Zero-Trust MCP Gate</div>
 </div>
 </body>
 </html>`;
@@ -1300,24 +1439,67 @@ const authorizePostHandler = (req, res) => {
   if (!isValid) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(401).send(`<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Invalid API Key — PC Control MCP</title>
+  <title>Invalid API Key — Solisk PC Control</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0b0f; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; }
-    .card { background: #1a1a24; padding: 32px; border-radius: 16px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.4); max-width: 440px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-    h2 { color: #f87171; font-size: 20px; margin-bottom: 12px; }
-    p { color: #9ca3af; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
-    .btn { display: inline-block; padding: 12px 24px; background: #7c3aed; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 14px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+      background: #061011;
+      background-image:
+        radial-gradient(ellipse at 50% 0%, rgba(255, 128, 120, 0.12) 0%, transparent 65%),
+        linear-gradient(rgba(102, 227, 211, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(102, 227, 211, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
+      color: #edf7f6;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+    .card {
+      background: rgba(10, 23, 24, 0.94);
+      border: 1px solid rgba(255, 128, 120, 0.35);
+      border-radius: 14px;
+      padding: 36px 32px;
+      text-align: center;
+      max-width: 440px;
+      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 24px rgba(255, 128, 120, 0.1);
+    }
+    .icon {
+      width: 52px; height: 52px;
+      margin: 0 auto 16px;
+      border-radius: 12px;
+      background: rgba(255, 128, 120, 0.1);
+      border: 1px solid rgba(255, 128, 120, 0.3);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icon svg { stroke: #ff8078; width: 26px; height: 26px; }
+    h2 { color: #ff8078; font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    p { color: #9bb1b0; font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
+    code { font-family: 'JetBrains Mono', monospace; color: #66e3d3; background: rgba(102, 227, 211, 0.1); padding: 2px 6px; border-radius: 4px; }
+    .btn {
+      display: inline-block; padding: 12px 24px;
+      background: linear-gradient(135deg, #103d3a 0%, #18524d 100%);
+      color: #66e3d3; text-decoration: none; border-radius: 8px;
+      border: 1px solid #66e3d3; font-weight: 600; font-size: 13px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #154c48; box-shadow: 0 4px 16px rgba(102, 227, 211, 0.25); }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2>❌ Invalid API Key</h2>
-    <p>The API key you entered is not valid for this PC room.<br><br>Use a key issued for the room code <code>${escHtml(code)}</code>.</p>
-    <a href="javascript:history.back()" class="btn">← Try Again</a>
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+    </div>
+    <h2>Invalid API Key</h2>
+    <p>The API key you entered is not valid for this PC room.<br><br>Verify the key issued for <code>${escHtml(code)}</code> in your desktop app.</p>
+    <a href="javascript:history.back()" class="btn">← Return to Authorization</a>
   </div>
 </body>
 </html>`);
