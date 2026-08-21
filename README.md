@@ -1,90 +1,72 @@
-# PC Control MCP
+# Solisk PC Control MCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Beta](https://img.shields.io/badge/status-beta-orange)]()
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/Kyzenkms/solisk-mcp/releases)
 
-Turn your PC into an AI-controllable machine via MCP (Model Context Protocol). Grant
-Claude, ChatGPT, or any MCP client read/write/execute access to your computer —
-files, processes, screen, audio, camera, keyboard, and mouse.
+Production-grade Model Context Protocol (MCP) server providing AI assistants with full, secure control over a Windows host machine. Exposes 96 system automation tools across filesystem, process execution, UI automation, system telemetry, network diagnostics, and git workflows.
 
-> **Read this first.** This app can run shell commands, modify files, and capture
-> your screen, microphone, and camera. Anyone holding your API key can do the same
-> remotely. Start with **Confirm each call** approval mode and a restricted
-> **allowed paths** list. See [SECURITY.md](SECURITY.md).
+Works out of the box with **Claude Desktop**, **Cursor**, **Cline**, **ChatGPT Connectors**, and **Claude.ai** browser integrations via local StreamableHTTP or encrypted cloud WebSocket tunneling.
 
 ---
 
-## Requirements
-
-| | |
-| --- | --- |
-| **OS** | Windows 10 or 11 (64-bit) |
-| **Disk** | ~250 MB |
-| **Node.js** | Not required — bundled in the installer |
-| **Account** | None. No sign-up, no telemetry. |
-
-macOS and Linux builds are not available yet.
-
----
-
-## Install (5 minutes)
-
-### Step 1 — Download
-
-Get `PC Control MCP Setup 1.0.0-beta.exe` from
-[**Releases**](https://github.com/Kyzenkms/solisk-mcp/releases/latest).
-
-### Step 2 — Run the installer
-
-The build is **unsigned**, so Windows shows a SmartScreen warning. To continue:
-
-> **More info** → **Run anyway**
-
-Prefer to verify before trusting it? Build from source instead — see
-[Development](#development).
-
-### Step 3 — Pick how AI reaches your PC
-
-The app opens a setup wizard on first launch. Choose one connection mode:
-
-| Mode | Your MCP URL | Best for |
-| ---- | ------------ | -------- |
-| **Local only** | `http://localhost:3000/mcp` | Claude Desktop, Cursor, Cline — anything on this same PC. Nothing leaves your machine. |
-| **Hosted relay** | `https://mcp.solisk.org/mcp/<your-name>` | ChatGPT and Claude.ai in the browser, which need a public HTTPS URL. Traffic passes through our relay. |
-| **Self-hosted relay** | `https://your-domain/mcp/<your-name>` | Public URL, your own server. See [Self-hosting](#self-hosting). |
-
-Pick **Local only** if you are unsure — you can switch in Settings later.
-
-### Step 4 — Finish the wizard
-
-1. **Device name** — becomes part of your URL (e.g. `john-pc`).
-2. **Approval mode** — `Confirm each call` (recommended) or `Auto-approve`.
-3. **Allowed paths** — one folder per line. **Leave blank to allow your whole
-   filesystem.** Start narrow, e.g.:
-   ```
-   C:\Users\you\Projects
-   C:\Users\you\Documents
-   ```
-
-Your API key, OAuth client ID, and client secret are **generated locally** on this
-step. Nothing is uploaded. They are stored in:
+## Architecture Overview
 
 ```
-%APPDATA%\PC Control MCP\config.json
+[ AI Assistant ]
+ (Claude.ai / ChatGPT / Cursor)
+       │
+       ▼  OAuth 2.1 / PKCE Bearer HTTPS
+┌───────────────────────────────────────────────────────────┐
+│ Cloud Relay Server (mcp.solisk.org)                       │
+│  - Authoritative OAuth 2.1 Authorization Gate             │
+│  - SQLite WAL State Store (Rooms, Tokens, Rate Limits)     │
+│  - Scrypt Hash Credential Verification                    │
+└─────────────────────────────┬─────────────────────────────┘
+                              │
+                              ▼  Encrypted WebSocket Tunnel
+┌───────────────────────────────────────────────────────────┐
+│ Local Host Engine (PC Control MCP Server)                 │
+│  - StreamableHTTP Engine (Port 3000)                      │
+│  - Path Sandboxing & Permission Gate (Turbo/Ask modes)     │
+│  - 96 Windows Automation Tool Handlers                    │
+└───────────────────────────────────────────────────────────┘
 ```
-
-### Step 5 — Copy your key and URL
-
-Open **Settings → API & Keys**, then **Copy MCP URL** and **Copy API key**.
 
 ---
 
-## Connect your AI client
+## Quickstart
 
-### Claude Desktop / Cursor / Cline
+### Prerequisites
+- **OS:** Windows 10 or Windows 11 (64-bit)
+- **Node.js:** `>= 22.5.0` (bundled inside Desktop Installer)
 
-Edit `claude_desktop_config.json`
-(`%APPDATA%\Claude\claude_desktop_config.json`):
+### 1. Download & Install
+Download the latest Windows installer from [Releases](https://github.com/Kyzenkms/solisk-mcp/releases):
+```
+PC Control MCP Setup 1.0.0.exe
+```
+
+### 2. Configuration & Approval Modes
+On first launch, configure your connection settings:
+
+- **Local Only:** Connect local AI clients directly via `http://localhost:3000/mcp`.
+- **Cloud Relay:** Connect remote web AI assistants via `https://mcp.solisk.org/mcp/<your-device-code>`.
+- **Permission Modes:**
+  - `Ask`: Prompts for authorization before executing state-modifying or shell operations.
+  - `Turbo`: Executes trusted tool invocations automatically with low latency.
+
+Credentials (`api_key`, `oauth_client_id`, `oauth_client_secret`) are generated locally on your machine and stored at:
+```
+%APPDATA%\pc-control-mcp-desktop\config.json
+```
+
+---
+
+## Client Integration
+
+### Local Clients (Claude Desktop / Cursor / Cline)
+
+Add the MCP server configuration to your client's config file (e.g., `%APPDATA%\Claude\claude_desktop_config.json`):
 
 ```json
 {
@@ -92,149 +74,101 @@ Edit `claude_desktop_config.json`
     "pc-control": {
       "type": "url",
       "url": "http://localhost:3000/mcp",
-      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+      "headers": {
+        "Authorization": "Bearer YOUR_LOCAL_API_KEY"
+      }
     }
   }
 }
 ```
 
-Restart Claude Desktop. A hammer icon appears when the tools load.
+### Web Connectors (ChatGPT / Claude.ai)
 
-### ChatGPT / Claude.ai (browser)
-
-These require a public HTTPS URL, so use **Hosted relay** or **Self-hosted**.
-Add the MCP URL as a connector and set the `Authorization: Bearer YOUR_API_KEY`
-header.
-
-### Verify it works
-
-Ask your AI client: *"List the files in my Documents folder."* In `Confirm each
-call` mode an approval dialog appears — approve it. If the listing comes back,
-you are connected.
+1. Register `https://mcp.solisk.org/mcp/<your-device-code>` as an MCP Connector.
+2. Complete the OAuth 2.1 authorization consent flow.
+3. Authenticate with your room API key.
 
 ---
 
-## Troubleshooting
+## Tool Capabilities (96 Registered Tools)
 
-| Symptom | Fix |
-| ------- | --- |
-| SmartScreen blocks install | **More info** → **Run anyway**. The beta is unsigned. |
-| Client shows no tools | Confirm the server is running (tray icon green), then fully restart the client. |
-| `401 Unauthorized` | API key mismatch. Re-copy from **Settings → API & Keys**; check the `Bearer ` prefix. |
-| Hosted relay offline | The app falls back to a Cloudflare tunnel URL — use **Copy MCP URL** again. |
-| `Access denied` on a file | Path is outside **allowed paths**. Add its folder in Settings. |
-| Port 3000 in use | Change the port in **Settings**, then update your client URL. |
-| Nothing works, want a clean slate | Quit the app, delete `%APPDATA%\PC Control MCP\config.json`, relaunch to redo the wizard. **This regenerates your API key** — update your clients. |
-
-Logs: `%APPDATA%\PC Control MCP\main.log` and the **Activity** tab.
-
----
-
-## Features
-
-| Category     | Tools                              |
-| ------------ | ---------------------------------- |
-| **Files**    | read, write, search, list, glob    |
-| **System**   | execute commands, get system info  |
-| **Keyboard** | type, hotkey, write clipboard      |
-| **Mouse**    | move, click, drag, scroll, position|
-| **Screen**   | screenshot (full/region)           |
-| **Audio**    | record microphone                  |
-| **Camera**   | capture photo/video                |
-| **Processes**| list, kill                         |
-| **AI**       | ask AI client inline               |
-
-Each API key can be **scoped** to specific tool categories, so a key may be
-granted read-only file access without shell or camera rights.
+| Category | Tools | Description |
+| :--- | :--- | :--- |
+| **Filesystem** | `read_file`, `write_file`, `append_file`, `delete_file`, `list_dir`, `search_files`, `move_file`, `copy_file`, `file_exists`, `get_file_info` | Atomic file operations, binary reads, recursively filtered search, and metadata inspection. |
+| **Shell & Execution** | `run_command`, `run_powershell`, `execute_script`, `open_program` | Asynchronous PowerShell and Command Prompt execution with stdout/stderr capture and configurable execution directory. |
+| **UI Automation** | `mouse_click`, `double_click`, `right_click`, `mouse_move`, `drag_and_drop`, `type_text`, `press_hotkey`, `scroll` | Low-level synthetic keyboard input, mouse coordinates, drag-drop pipelines, and hotkey combinations. |
+| **Screen & OCR** | `take_screenshot`, `qa_screenshot`, `ocr_screen` | Full-screen and region screenshot capture with optical character recognition for automated UI verification. |
+| **Process Management** | `list_processes`, `get_process_info`, `kill_process` | Inspect system tasks, CPU/RAM resource usage, and terminate processes. |
+| **Network Diagnostics** | `nslookup`, `ping_host`, `http_request`, `get_network_interfaces` | DNS queries, host reachability checks, HTTP request dispatch, and interface telemetry. |
+| **Git Operations** | `git_status`, `git_log`, `git_diff`, `git_commit`, `git_checkout` | Native repository state inspection, commit creation, and branch management. |
+| **System Info & Memory** | `get_system_info`, `get_clipboard`, `set_clipboard`, `read_memory`, `write_memory` | Complete hardware/OS telemetry, clipboard manipulation, and session state persistence. |
 
 ---
 
-## Self-hosting
+## Security Model
 
-Run your own relay so no traffic touches our infrastructure. You need a VPS and
-a domain A-record pointing at it.
+1. **Zero-Trust Relay Gate:** The cloud relay enforces authentication before any payload is forwarded across the WebSocket tunnel. Lacking valid credentials returns `HTTP 401 Unauthorized`.
+2. **PKCE S256 OAuth Enforcement:** OAuth authorization exchanges strictly require SHA256 Code Challenges (`RFC 7636`) and exact redirect URI matching against an approved domain whitelist.
+3. **RFC 8707 Resource Binding:** Access tokens and refresh tokens are cryptographically bound to canonical resource URIs, preventing cross-tenant token reuse.
+4. **Scrypt Key Hashing:** API keys are hashed using `scrypt` with unique salts before storage. Plaintext keys are never stored on disk or server databases.
+5. **Path Sandboxing:** File operations are restricted to user-configured allowed paths. System directories (`System32`, `SysWOW64`) are denied by default.
 
-**VPS (Docker + Caddy, automatic HTTPS):**
+---
+
+## Headless Execution (CLI / Server)
+
+To run the MCP server in headless mode without the Electron GUI:
 
 ```bash
+git clone https://github.com/Kyzenkms/solisk-mcp.git
+cd pc-control-mcp
+npm install
+
+# Run HTTP StreamableHTTP server on port 3000
+npm run http
+
+# Run stdio server for CLI integrations
+npm run stdio
+```
+
+---
+
+## Self-Hosting the Cloud Relay
+
+You can run your own cloud relay on a VPS to avoid third-party servers:
+
+```bash
+# Docker + Caddy Automated Installation
 ssh root@YOUR_VPS
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/main/self-hosted-setup/vps/install.sh)"
 ```
 
-**Bare Node.js instead of Docker:**
+Or execute manually using Node.js:
 
 ```bash
-git clone https://github.com/Kyzenkms/solisk-mcp.git
-cd pc-control-mcp/relay-server
+cd relay-server
 npm install
-node server.js
+PORT=3000 DATA_DIR=./data PUBLIC_URL=https://your-domain.com node server.js
 ```
 
-Put Nginx in front using [`deploy/relay.example.nginx`](deploy/relay.example.nginx)
-(replace `YOUR_DOMAIN`). Then in the desktop app, set **Settings → Relay domain**
-to your domain.
-
-Details: [`self-hosted-setup/README.md`](self-hosted-setup/README.md) ·
-[`relay-server/README.md`](relay-server/README.md)
+See [self-hosted-setup/README.md](self-hosted-setup/README.md) and [relay-server/README.md](relay-server/README.md) for full deployment instructions.
 
 ---
 
-## Running the server without the GUI
+## Verification & Testing
 
-The MCP server is plain Node.js and runs headless:
-
-```bash
-git clone https://github.com/Kyzenkms/solisk-mcp.git
-cd pc-control-mcp
-npm install
-cp config.example.json config.json   # optional; keys self-generate if absent
-npm run http                         # or: npm run stdio
-```
-
-Missing credentials are generated on first start and written back to
-`config.json` ([`lib/security.js`](lib/security.js)).
-
----
-
-## Documentation
-
-| Resource | Description |
-| -------- | ----------- |
-| [Desktop app](desktop-app/README.md) | GUI setup, install, tray, config |
-| [Relay server](relay-server/README.md) | Relay architecture and endpoints |
-| [Self-hosting](self-hosted-setup/README.md) | Run your own relay (VPS or local) |
-| [API scopes](relay-server/scopes.js) | Tool-to-scope enforcement mapping |
-| [SECURITY](SECURITY.md) | Auth model, hardening, disclosure |
-| [CONTRIBUTING](CONTRIBUTING.md) | Dev setup and PR guidelines |
-| [RELEASE_NOTES](RELEASE_NOTES.md) | Changelog |
-
----
-
-## Development
+Run the automated test suites:
 
 ```bash
-git clone https://github.com/Kyzenkms/solisk-mcp.git
-cd pc-control-mcp
-npm install
+# Run local relay OAuth regression suite (32 assertions)
+node relay-server/test/oauth.test.js
 
-cd desktop-app
-npm install
-npm run dev                  # run the GUI from source
-npm run build:unsigned-beta  # build an unsigned installer
+# Run live end-to-end MCP client integration test
+node test-live.js
 ```
-
-Installers land in `desktop-app/dist/`. CI builds the same artifact on any `v*`
-tag — see [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-## Security
-
-Report vulnerabilities privately per [SECURITY.md](SECURITY.md). Please do not
-open public issues for exploitable bugs.
+[MIT](LICENSE) — Solisk PC Control MCP.
