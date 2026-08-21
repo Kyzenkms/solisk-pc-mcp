@@ -1,6 +1,6 @@
 {
   "name": "pc-control-mcp-desktop",
-  "version": "1.0.0-beta",
+  "version": "1.0.0",
   "description": "PC Control MCP Desktop App. Connect trusted AI clients to your Windows PC.",
   "main": "main.js",
   "author": "kyzenkms",

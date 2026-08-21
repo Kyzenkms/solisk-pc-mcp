@@ -15,6 +15,19 @@ try {
   apiKey = cfg.api_key || "";
 } catch {}
 
+if (!apiKey) {
+  const appData = process.env.APPDATA || (process.platform === "darwin" ? process.env.HOME + "/Library/Application Support" : process.env.HOME + "/.config");
+  for (const sub of ["pc-control-mcp", "pc-control-mcp-desktop"]) {
+    try {
+      const p = path.join(appData, sub, "config.json");
+      if (fs.existsSync(p)) {
+        const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+        if (cfg.api_key) { apiKey = cfg.api_key; break; }
+      }
+    } catch {}
+  }
+}
+
 function getContent(resp) {
   return resp?.content?.[0]?.text ?? "(no content)";
 }

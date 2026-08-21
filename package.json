@@ -1,6 +1,6 @@
 {
   "name": "pc-control-mcp",
-  "version": "1.0.0-beta",
+  "version": "1.0.0",
   "description": "Production-grade MCP server giving AI full control of your Windows PC. Works with ChatGPT connectors, Claude.ai integrations, Cursor, and any MCP client.",
   "main": "index.js",
   "type": "commonjs",
