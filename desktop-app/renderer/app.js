@@ -288,11 +288,33 @@ function applyStatus(s) {
   const epRelay  = $('epRelay');
   const epTunnel = $('epTunnel');
   const epLocal  = $('epLocal');
+  const btnRetry = $('btnRetryRelay');
+
   if (epRelay) {
-    if (ST.relayUrl)  { epRelay.textContent = ST.relayUrl; epRelay.classList.add('live'); $('relayState')?.replaceChildren(document.createTextNode('Live')); }
-    else if (ST.relayError && ST.tunnelUrl) { epRelay.textContent = 'Hosted relay unavailable — secure tunnel ready'; epRelay.classList.remove('live'); $('relayState')?.replaceChildren(document.createTextNode('Fallback')); }
-    else if (ST.relayError) { epRelay.textContent = ST.relayError; epRelay.classList.remove('live'); $('relayState')?.replaceChildren(document.createTextNode('Unavailable')); }
-    else { epRelay.textContent = on ? 'Connecting to relay…' : 'Server not running'; epRelay.classList.remove('live'); $('relayState')?.replaceChildren(document.createTextNode(on ? 'Connecting' : 'Offline')); }
+    if (ST.relayUrl)  {
+      epRelay.textContent = ST.relayUrl;
+      epRelay.classList.add('live');
+      $('relayState')?.replaceChildren(document.createTextNode('Live'));
+      if (btnRetry) btnRetry.style.display = 'none';
+    }
+    else if (ST.relayError && ST.tunnelUrl) {
+      epRelay.textContent = 'Hosted relay unavailable — secure tunnel ready';
+      epRelay.classList.remove('live');
+      $('relayState')?.replaceChildren(document.createTextNode('Fallback'));
+      if (btnRetry) btnRetry.style.display = 'inline-block';
+    }
+    else if (ST.relayError) {
+      epRelay.textContent = ST.relayError;
+      epRelay.classList.remove('live');
+      $('relayState')?.replaceChildren(document.createTextNode('Unavailable'));
+      if (btnRetry) btnRetry.style.display = 'inline-block';
+    }
+    else {
+      epRelay.textContent = on ? 'Connecting to relay…' : 'Server not running';
+      epRelay.classList.remove('live');
+      $('relayState')?.replaceChildren(document.createTextNode(on ? 'Connecting' : 'Offline'));
+      if (btnRetry) btnRetry.style.display = on ? 'inline-block' : 'none';
+    }
   }
   if (epTunnel) {
     if (ST.tunnelUrl) { epTunnel.textContent = ST.tunnelUrl + '/mcp'; epTunnel.classList.add('live'); $('tunnelState')?.replaceChildren(document.createTextNode('Live')); }
@@ -303,6 +325,17 @@ function applyStatus(s) {
   // Refresh connect page content if it's visible
   if (document.querySelector('#pg-connect.on')) renderConnect();
 }
+
+window.retryRelayConn = async function() {
+  toast('Retrying relay connection…');
+  try {
+    const res = await window.mcp?.retryRelay();
+    if (res && res.status) applyStatus(res.status);
+    toast('Reconnection initiated ✓', 's');
+  } catch (e) {
+    toast('Retry failed: ' + (e?.message || e), 'e');
+  }
+};
 
 // ── Server toggle ─────────────────────────────────────────────────────────────
 async function toggleServer() {
@@ -475,16 +508,31 @@ $('btnAllOff')   ?.addEventListener('click', () => { CATS.forEach(c=>c.tools.for
 $('btnSaveTools')?.addEventListener('click', () => { saveTools(); toast('Preferences saved','s'); });
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
+let currentLogFilter = 'ALL';
+let allLogsCache = [];
+
+window.filterLogs = function(cat) {
+  currentLogFilter = cat;
+  document.querySelectorAll('.cat-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === cat);
+  });
+  renderLogs();
+};
+
 function renderLogs() {
   window.mcp?.getLogs().then(logs => {
+    allLogsCache = logs || [];
+    const filtered = currentLogFilter === 'ALL'
+      ? allLogsCache
+      : allLogsCache.filter(l => (l.category || '').toUpperCase() === currentLogFilter);
+
     const c = $('logContainer');
     const d = $('dashboardLogs');
-    if (!logs?.length) {
-      if (c) c.innerHTML = '<div class="log-empty">No activity yet. Start the server to see runtime events.</div>';
+    if (!filtered.length) {
+      if (c) c.innerHTML = '<div class="log-empty">No activity found for category "' + currentLogFilter + '".</div>';
       if (d) d.innerHTML = '<div class="log-empty">No activity yet. Start the server to see runtime events.</div>';
       return;
     }
-    if (c) c.innerHTML = logs.map(buildLogRow).join('');
     if (d) d.innerHTML = logs.slice(0, 5).map(buildLogRow).join('');
   });
 }

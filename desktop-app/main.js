@@ -65,11 +65,29 @@ let tunnelUrl    = null;
 let relayUrl     = null;
 let relayError   = null;
 let relayGeneration = 0;
+let relayRetryCount = 0;
+const MAX_RELAY_RETRIES = 10;
+let isInternetOffline = false;
 let isRunning    = false;
 let toolCount    = 0;
 let sessionCount = 0;
 let activeSessions = new Set();
 let logLines     = [];
+
+const dns = require("dns");
+function checkInternetAvailability() {
+  return new Promise((resolve) => {
+    dns.lookup("1.1.1.1", (err) => {
+      if (err) {
+        dns.lookup("mcp.solisk.org", (err2) => {
+          resolve(!err2);
+        });
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
 
 function loadConfig() {
   try {
@@ -125,9 +143,28 @@ function saveConfig(c) {
 }
 
 function addLog(msg, type = "info", meta = null) {
-  const entry = { time: new Date().toLocaleTimeString(), msg: String(msg), type, ...(meta || {}) };
+  let category = (meta && meta.category) ? meta.category : null;
+  if (!category) {
+    const text = String(msg);
+    if (meta && meta.tool) category = "TOOL";
+    else if (text.includes("Tool") || text.includes("tool") || text.includes("run_command") || text.includes("read_file") || text.includes("write_file") || text.includes("execute")) category = "TOOL";
+    else if (text.includes("Internet") || text.includes("internet") || text.includes("offline") || text.includes("DNS") || text.includes("Network")) category = "NET";
+    else if (text.includes("Relay") || text.includes("relay") || text.includes("WebSocket") || text.includes("Connected") || text.includes("disconnected") || text.includes("tunnel") || text.includes("session")) category = "CONN";
+    else if (text.includes("Key") || text.includes("key") || text.includes("Auth") || text.includes("auth") || text.includes("Permission") || text.includes("Rate limit")) category = "SECURITY";
+    else if (type === "error") category = "ERROR";
+    else category = "SYSTEM";
+  }
+
+  const entry = {
+    id: "log_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+    time: new Date().toLocaleTimeString(),
+    msg: String(msg),
+    type,
+    category,
+    ...(meta || {})
+  };
   logLines.unshift(entry);
-  if (logLines.length > 200) logLines.pop();
+  if (logLines.length > 500) logLines.pop();
   try {
     fs.appendFileSync(
       path.join(app.getPath("userData"), "main.log"),
@@ -140,7 +177,7 @@ function addLog(msg, type = "info", meta = null) {
 }
 
 function getStatus() {
-  return { running: isRunning, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort };
+  return { running: isRunning, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort, relayRetryCount, maxRelayRetries: MAX_RELAY_RETRIES, isInternetOffline };
 }
 
 function sendStatus() {
@@ -339,9 +376,42 @@ function startRelay(cfg) {
   relayError = null;
   addLog("Connecting to secure VPS relay...", "info");
 
-  const connect = () => {
+  const scheduleRelayReconnect = () => {
+    if (generation !== relayGeneration || !isRunning) return;
+    if (relayRetryCount >= MAX_RELAY_RETRIES) {
+      relayError = `Max reconnection attempts reached (${MAX_RELAY_RETRIES}/${MAX_RELAY_RETRIES}). Automatic retries paused. Click 'Retry Connection' to reconnect.`;
+      addLog(relayError, "warn", { category: "NET", maxRetries: true });
+      sendStatus();
+      return;
+    }
+    relayRetryCount++;
+    const backoffMs = Math.min(2000 * Math.pow(1.4, relayRetryCount - 1), 30000);
+    addLog(`Reconnecting to VPS relay in ${Math.round(backoffMs / 1000)}s (attempt ${relayRetryCount}/${MAX_RELAY_RETRIES})...`, "info", { category: "CONN", attempt: relayRetryCount });
+    setTimeout(connect, backoffMs);
+  };
+
+  const connect = async () => {
     if (!isRunning || generation !== relayGeneration) return;
-    addLog(`Connecting to VPS relay at wss://${domain}?code=${encodeURIComponent(name)} ...`, "info");
+
+    // Check internet connectivity first
+    const online = await checkInternetAvailability();
+    if (!online) {
+      if (!isInternetOffline) {
+        isInternetOffline = true;
+        addLog("Internet connection offline — relay reconnection paused", "error", { category: "NET", offline: true });
+      }
+      relayError = "Internet connection offline";
+      sendStatus();
+      scheduleRelayReconnect();
+      return;
+    }
+
+    if (isInternetOffline) {
+      isInternetOffline = false;
+      addLog("Internet connection restored", "success", { category: "NET", online: true });
+    }
+
+    addLog(`Connecting to VPS relay at wss://${domain}?code=${encodeURIComponent(name)} (attempt ${relayRetryCount + 1}/${MAX_RELAY_RETRIES})...`, "info", { category: "CONN" });
     const ws = new WebSocket(RELAY_WS, {
       rejectUnauthorized: false
     });
@@ -354,9 +424,10 @@ function startRelay(cfg) {
       }
       relayUrl = `https://${domain}/mcp/${name}`;
       relayError = null;
-      addLog(`VPS Relay LIVE: ${relayUrl}`, "success");
-      addLog(`Relay socket authenticated for workspace "${name}"`, "success");
-      // Note: relay WS connection itself is NOT a session — don't add to activeSessions
+      relayRetryCount = 0; // reset counter on successful connection!
+      isInternetOffline = false;
+      addLog(`VPS Relay LIVE: ${relayUrl}`, "success", { category: "CONN" });
+      addLog(`Relay socket authenticated for workspace "${name}"`, "success", { category: "CONN" });
       sendStatus();
 
       // Keep-alive ping interval every 15s to keep WebSocket connection active
@@ -397,9 +468,9 @@ function startRelay(cfg) {
               manifest: manifest || undefined,
               openapi: openapi || undefined
             }));
-            addLog("Room initialized on VPS Relay.", "success");
+            addLog("Room initialized on VPS Relay.", "success", { category: "CONN" });
           } catch (e) {
-            addLog(`Relay init error: ${e.message}`, "warn");
+            addLog(`Relay init error: ${e.message}`, "warn", { category: "CONN" });
           }
         }
       });
@@ -416,7 +487,7 @@ function startRelay(cfg) {
         addLog(
           toolName ? `Remote tool request: ${toolName}` : `Relay request: ${rpcMethod || payload?.method || "POST"} ${payload?.path || "/mcp"}`,
           "info",
-          { tool: toolName, method: rpcMethod || payload?.method || "POST", path: payload?.path || "/mcp" }
+          { tool: toolName, method: rpcMethod || payload?.method || "POST", path: payload?.path || "/mcp", category: toolName ? "TOOL" : "CONN" }
         );
 
         // Only count real MCP session IDs (sess_*). Ignore auto-init / synthetic sessions.
@@ -425,7 +496,7 @@ function startRelay(cfg) {
           activeSessions.add(sid);
           sessionCount = activeSessions.size;
           sendStatus();
-          // Auto-expire session from active set after 10 min (no close event from ChatGPT stateless mode)
+          // Auto-expire session from active set after 10 min
           setTimeout(() => {
             if (activeSessions.delete(sid)) {
               sessionCount = activeSessions.size;
@@ -441,7 +512,6 @@ function startRelay(cfg) {
         const stripped = rawPath.replace(/^\/mcp\/[^/]+/, "");
         let localPath = stripped || "/mcp";
 
-        // Reconstruct query string if payload has query or url parameters
         if (payload.query && typeof payload.query === "object" && Object.keys(payload.query).length > 0) {
           const qs = new URLSearchParams(payload.query).toString();
           if (qs && !localPath.includes("?")) localPath += "?" + qs;
@@ -504,7 +574,7 @@ function startRelay(cfg) {
               if (contentType.includes("text/event-stream")) {
                 parsed = body;
               } else if (contentType.includes("text/html")) {
-                parsed = body; // Pass HTML raw as string so VPS Relay serves it natively
+                parsed = body;
               } else if (body && body.trim() !== "") {
                 try {
                   parsed = JSON.parse(body);
@@ -526,7 +596,7 @@ function startRelay(cfg) {
               addLog(
                 `${toolName ? `Tool ${toolName}` : "Relay request"} completed with HTTP ${localRes.statusCode}`,
                 localRes.statusCode >= 400 ? "error" : "success",
-                { tool: toolName, method: rpcMethod || payload?.method, status: localRes.statusCode }
+                { tool: toolName, method: rpcMethod || payload?.method, status: localRes.statusCode, category: toolName ? "TOOL" : "CONN" }
               );
             } catch (e) {
               if (generation !== relayGeneration || relayWs !== ws || ws.readyState !== 1) return;
@@ -541,7 +611,7 @@ function startRelay(cfg) {
           });
         });
         localReq.on("error", (e) => {
-          addLog(`Local relay forwarding failed: ${e.message}`, "error", { tool: toolName, method: rpcMethod || payload?.method });
+          addLog(`Local relay forwarding failed: ${e.message}`, "error", { tool: toolName, method: rpcMethod || payload?.method, category: "ERROR" });
           if (generation !== relayGeneration || relayWs !== ws || ws.readyState !== 1) return;
           ws.send(JSON.stringify({
             type: "response",
@@ -557,7 +627,7 @@ function startRelay(cfg) {
         }
         localReq.end();
       } catch (err) {
-        addLog(`Relay message error: ${err.message}`, "error");
+        addLog(`Relay message error: ${err.message}`, "error", { category: "ERROR" });
       }
     });
 
@@ -567,12 +637,11 @@ function startRelay(cfg) {
       relayWs = null;
       relayUrl = null;
       relayError = "Hosted relay disconnected";
-      // Clear all sessions on relay disconnect (they're unreachable anyway)
       activeSessions.clear();
       sessionCount = 0;
       sendStatus();
-      addLog("VPS relay disconnected; reconnect scheduled in 5 seconds", "warn");
-      setTimeout(connect, 5000);
+      addLog("VPS relay disconnected — scheduling reconnect", "warn", { category: "CONN" });
+      scheduleRelayReconnect();
     });
 
     ws.on("error", (err) => {
@@ -585,17 +654,18 @@ function startRelay(cfg) {
         : `Hosted relay unavailable${err?.message ? `: ${err.message}` : ""}`;
       activeSessions.clear();
       sessionCount = 0;
-      addLog(`VPS Relay Connection Error: ${err ? err.message : "Connection failed"}`, "error");
+      addLog(`VPS Relay Connection Error: ${err ? err.message : "Connection failed"}`, "error", { category: "NET" });
       sendStatus();
-      setTimeout(connect, 5000);
+      scheduleRelayReconnect();
     });
   };
 
-  setTimeout(connect, 1000); // slight delay so MCP server is ready first
+  setTimeout(connect, 1000);
 }
 
 function stopRelay() {
   relayGeneration++;
+  relayRetryCount = 0;
   if (relayWs) { try { relayWs.close(); } catch {} relayWs = null; }
   relayUrl = null;
   relayError = null;
@@ -884,6 +954,16 @@ ipcMain.handle("maximize",    () => win.isMaximized() ? win.unmaximize() : win.m
 ipcMain.handle("close-win",   () => { stopServer(); app.exit(0); });
 ipcMain.handle("quit-app",    () => { stopServer(); app.exit(0); });
 ipcMain.handle("shell-approval-res", (_, payload) => { if (serverProc) serverProc.send({ type: "shell_approval_res", ...payload }); return true; });
+ipcMain.handle("retry-relay", async () => {
+  addLog("Manual relay reconnection requested by user", "info", { category: "CONN" });
+  relayRetryCount = 0;
+  relayError = null;
+  isInternetOffline = false;
+  const cfg = loadConfig();
+  stopRelay();
+  startRelay(cfg);
+  return { ok: true, status: getStatus() };
+});
 
 // ── Relay Admin API: per-user key management ──────────────────────────────────
 const https = require("https");

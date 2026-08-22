@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("mcp", {
   getLogs:            () => ipcRenderer.invoke("get-logs"),
   startServer:        () => ipcRenderer.invoke("start-server"),
   stopServer:         () => ipcRenderer.invoke("stop-server"),
+  retryRelay:         () => ipcRenderer.invoke("retry-relay"),
   regenerateMcpUrl:   () => ipcRenderer.invoke("regenerate-mcp-url"),
   saveConfig:         (c) => ipcRenderer.invoke("save-config", c),
   copyUrl:            () => ipcRenderer.invoke("copy-url"),
