@@ -39,6 +39,7 @@
           "package.json",
           "lib/**",
           "tools/**",
+          "relay-server/scopes.js",
           "node_modules/**"
         ]
       }

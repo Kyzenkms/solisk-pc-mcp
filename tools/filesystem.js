@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const { checkPath } = require("../lib/security");
 
+const DEFAULT_READ_LIMIT = 2 * 1024 * 1024;
+const MAX_FILE_WRITE = 10 * 1024 * 1024;
+
 function validatePath(filePath) {
   if (!filePath) return;
   const check = checkPath(filePath);
@@ -12,6 +15,33 @@ function validatePath(filePath) {
 
 const filesystemTools = [
   {
+    name: "hash_file",
+    description: "Stream a file to compute its checksum without loading it into memory. Use SHA-256 to verify downloads or detect changes; MD5 is for legacy compatibility only.",
+    inputSchema: {
+      type: "object", additionalProperties: false,
+      properties: {
+        path: { type: "string", minLength: 1, description: "File path within allowed filesystem roots" },
+        algorithm: { type: "string", enum: ["sha256", "sha512", "md5"], default: "sha256" },
+        timeout_ms: { type: "integer", minimum: 100, maximum: 50000, default: 30000 },
+      }, required: ["path"],
+    },
+    handler: async ({ path: filePath, algorithm = "sha256", timeout_ms = 30000 }) => {
+      let stream, timer;
+      try {
+        const resolved = path.resolve(filePath);
+        validatePath(resolved);
+        const hash = require("crypto").createHash(algorithm);
+        stream = fs.createReadStream(resolved);
+        timer = setTimeout(() => stream.destroy(new Error("Hash operation timed out")), timeout_ms);
+        let bytes = 0;
+        for await (const chunk of stream) { hash.update(chunk); bytes += chunk.length; }
+        return { success: true, data: { path: resolved, algorithm, digest: hash.digest("hex"), bytes_hashed: bytes } };
+      } catch (err) {
+        return { success: false, code: "HASH_FILE_FAILED", error: err.message };
+      } finally { clearTimeout(timer); stream?.destroy(); }
+    },
+  },
+  {
     name: "read_file",
     description: "Read the full contents of a file from the filesystem.",
     inputSchema: {
@@ -19,18 +49,29 @@ const filesystemTools = [
       properties: {
         path: { type: "string", description: "Absolute or relative path to the file" },
         encoding: { type: "string", description: "File encoding (default: utf8)", default: "utf8" },
+        max_bytes: { type: "integer", minimum: 1, maximum: 20971520, description: "Maximum bytes to return (default 2 MiB)", default: DEFAULT_READ_LIMIT },
+        offset_bytes: { type: "integer", minimum: 0, default: 0, description: "Zero-based byte offset; use next_offset_bytes to continue a truncated read. Byte boundaries may split multibyte text." },
       },
       required: ["path"],
     },
-    handler: async ({ path: filePath, encoding = "utf8" }) => {
+    handler: async ({ path: filePath, encoding = "utf8", max_bytes = DEFAULT_READ_LIMIT, offset_bytes = 0 }) => {
       try {
         const resolved = path.resolve(filePath);
         validatePath(resolved);
-        const content = fs.readFileSync(resolved, encoding);
-        return {
-          success: true,
-          data: { content, size: content.length, path: resolved }
-        };
+        const limit = Math.max(1, Math.min(Number(max_bytes) || DEFAULT_READ_LIMIT, 20 * 1024 * 1024));
+        const handle = await fs.promises.open(resolved, "r");
+        try {
+          const stat = await handle.stat();
+          if (!stat.isFile()) throw new Error("Path must be a regular file");
+          const buffer = Buffer.alloc(Math.min(limit, Math.max(0, stat.size - offset_bytes)));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset_bytes);
+          const truncated = offset_bytes + bytesRead < stat.size;
+          return { success: true, truncated, data: {
+            content: buffer.subarray(0, bytesRead).toString(encoding), size: stat.size,
+            returned_bytes: bytesRead, offset_bytes,
+            next_offset_bytes: truncated ? offset_bytes + bytesRead : null, path: resolved,
+          } };
+        } finally { await handle.close(); }
       } catch (err) {
         return { success: false, error: err.message, code: "READ_FILE_FAILED" };
       }
@@ -52,6 +93,7 @@ const filesystemTools = [
       try {
         const resolved = path.resolve(filePath);
         validatePath(resolved);
+        if (Buffer.byteLength(content, encoding) > MAX_FILE_WRITE) throw new Error("Content exceeds 10 MiB limit");
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
         fs.writeFileSync(resolved, content, encoding);
         return {
@@ -78,6 +120,7 @@ const filesystemTools = [
       try {
         const resolved = path.resolve(filePath);
         validatePath(resolved);
+        if (Buffer.byteLength(content, "utf8") > MAX_FILE_WRITE) throw new Error("Content exceeds 10 MiB limit");
         fs.appendFileSync(resolved, content, "utf8");
         return { success: true, data: { path: resolved } };
       } catch (err) {
@@ -128,15 +171,22 @@ const filesystemTools = [
       properties: {
         path: { type: "string", description: "Path to the directory" },
         show_hidden: { type: "boolean", description: "Include hidden files (starting with .)", default: false },
+        offset: { type: "integer", minimum: 0, default: 0, description: "Zero-based offset in name-sorted entries" },
+        limit: { type: "integer", minimum: 1, maximum: 1000, default: 200 },
+        entry_type: { type: "string", enum: ["all", "file", "directory"], default: "all" },
       },
       required: ["path"],
     },
-    handler: async ({ path: dirPath, show_hidden = false }) => {
+    handler: async ({ path: dirPath, show_hidden = false, offset = 0, limit = 200, entry_type = "all" }) => {
       try {
         const resolved = path.resolve(dirPath);
+        validatePath(resolved);
         const entries = fs.readdirSync(resolved, { withFileTypes: true });
-        const items = entries
+        const filtered = entries
           .filter((e) => show_hidden || !e.name.startsWith("."))
+          .filter(e => entry_type === "all" || (entry_type === "directory" ? e.isDirectory() : e.isFile()))
+          .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+        const items = filtered.slice(offset, offset + limit)
           .map((e) => {
             const fullPath = path.join(resolved, e.name);
             let size, mtime;
@@ -154,7 +204,7 @@ const filesystemTools = [
               modified: mtime,
             };
           });
-        return { success: true, data: { path: resolved, count: items.length, items } };
+        return { success: true, data: { path: resolved, count: items.length, total: filtered.length, offset, next_offset: offset + items.length < filtered.length ? offset + items.length : null, items } };
       } catch (err) {
         return { success: false, error: err.message, code: "LIST_DIR_FAILED" };
       }
@@ -175,6 +225,8 @@ const filesystemTools = [
       try {
         const src = path.resolve(source);
         const dst = path.resolve(destination);
+        validatePath(src);
+        validatePath(dst);
         fs.mkdirSync(path.dirname(dst), { recursive: true });
         fs.renameSync(src, dst);
         return { success: true, data: { from: src, to: dst } };
@@ -198,6 +250,8 @@ const filesystemTools = [
       try {
         const src = path.resolve(source);
         const dst = path.resolve(destination);
+        validatePath(src);
+        validatePath(dst);
         fs.mkdirSync(path.dirname(dst), { recursive: true });
         fs.copyFileSync(src, dst);
         return { success: true, data: { from: src, to: dst } };
@@ -219,6 +273,7 @@ const filesystemTools = [
     handler: async ({ path: filePath }) => {
       try {
         const resolved = path.resolve(filePath);
+        validatePath(resolved);
         const exists = fs.existsSync(resolved);
         let type = null;
         if (exists) {
@@ -249,6 +304,7 @@ const filesystemTools = [
     handler: async ({ path: filePath }) => {
       try {
         const resolved = path.resolve(filePath);
+        validatePath(resolved);
         const stat = fs.statSync(resolved);
         return {
           success: true,
@@ -284,6 +340,7 @@ const filesystemTools = [
     handler: async ({ directory, pattern, search_content = false, max_results = 50, timeout_ms = 15000 }) => {
       try {
         const resolved = path.resolve(directory);
+        validatePath(resolved);
         let results = [];
         const startTime = Date.now();
 
@@ -343,6 +400,7 @@ const filesystemTools = [
     handler: async ({ path: filePath }) => {
       try {
         const resolved = path.resolve(filePath);
+        validatePath(resolved);
         const raw = fs.readFileSync(resolved, "utf8");
         const data = JSON.parse(raw);
         return { success: true, data: { path: resolved, data } };
@@ -366,8 +424,11 @@ const filesystemTools = [
     handler: async ({ path: filePath, data, indent = 2 }) => {
       try {
         const resolved = path.resolve(filePath);
+        validatePath(resolved);
+        const serialized = JSON.stringify(data, null, indent);
+        if (Buffer.byteLength(serialized, "utf8") > MAX_FILE_WRITE) throw new Error("Content exceeds 10 MiB limit");
         fs.mkdirSync(path.dirname(resolved), { recursive: true });
-        fs.writeFileSync(resolved, JSON.stringify(data, null, indent), "utf8");
+        fs.writeFileSync(resolved, serialized, "utf8");
         return { success: true, data: { path: resolved } };
       } catch (err) {
         return { success: false, error: err.message, code: "WRITE_JSON_FAILED" };
@@ -388,6 +449,7 @@ const filesystemTools = [
     handler: async ({ path: dirPath, max_depth = 1 }) => {
       try {
         const resolved = path.resolve(dirPath);
+        validatePath(resolved);
         if (!fs.existsSync(resolved)) {
           return { success: false, error: `Directory not found: ${resolved}`, code: "NOT_FOUND" };
         }
@@ -457,6 +519,7 @@ const filesystemTools = [
     handler: async ({ path: filePath, target_content, replacement_content, allow_multiple = false }) => {
       try {
         const resolved = path.resolve(filePath);
+        validatePath(resolved);
         if (!fs.existsSync(resolved)) {
           return { success: false, error: `File not found: ${resolved}`, code: "NOT_FOUND" };
         }
@@ -495,6 +558,7 @@ const filesystemTools = [
     handler: async ({ directory, pattern, max_matches = 100, is_regex = false, timeout_ms = 15000 }) => {
       try {
         const resolved = path.resolve(directory);
+        validatePath(resolved);
         let matches = [];
         const startTime = Date.now();
         const regex = is_regex ? new RegExp(pattern, "i") : null;

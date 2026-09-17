@@ -38,18 +38,42 @@ ST.toolCount = TOOL_TOTAL;
 
 // ── Tool state ────────────────────────────────────────────────────────────────
 let toolState = {};
+let toolSaveQueue = Promise.resolve();
 (function() {
   try { toolState = JSON.parse(localStorage.getItem('toolState') || '{}'); } catch { toolState = {}; }
   CATS.forEach(c => c.tools.forEach(t => { if (toolState[t] === undefined) toolState[t] = true; }));
 })();
-function saveTools() { localStorage.setItem('toolState', JSON.stringify(toolState)); }
+async function saveTools() {
+  localStorage.setItem('toolState', JSON.stringify(toolState));
+  const disabled_tools = CATS.flatMap(c => c.tools).filter(t => toolState[t] === false);
+  toolSaveQueue = toolSaveQueue.then(async () => {
+    const old = await window.mcp?.getConfig() || {};
+    await window.mcp?.saveConfig({ ...old, disabled_tools });
+  });
+  return toolSaveQueue;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const clip = async t => {
-  try { await navigator.clipboard.writeText(t); return true; }
-  catch { toast('Clipboard access failed', 'e'); return false; }
+  const text = String(t ?? '');
+  if (!text) { toast('Nothing to copy', 'e'); return false; }
+  // 1) Main-process clipboard — always works, no permissions needed.
+  try { if (await window.mcp?.writeClipboard(text)) return true; } catch {}
+  // 2) Browser API fallback.
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  // 3) Legacy fallback.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (ok) return true;
+  } catch {}
+  toast('Clipboard access failed', 'e');
+  return false;
 };
 
 function applyTheme(theme) {
@@ -193,15 +217,17 @@ function toast(msg, type = '') {
   el._t = setTimeout(() => el.className = '', 2800);
 }
 
-window.copyEl = function(id) {
+window.copyEl = async function(id) {
   const el = $(id);
   if (!el) return;
-  clip('value' in el ? el.value : el.textContent.trim());
-  toast('Copied!', 's');
+  const ok = await clip('value' in el ? el.value : el.textContent.trim());
+  if (ok) toast('Copied!', 's');
 };
 
-window.copyKey = function() {
-  if (_apiKeyRaw) { clip(_apiKeyRaw); toast('API key copied!', 's'); }
+window.copyKey = async function() {
+  if (!_apiKeyRaw) { toast('No API key loaded yet', 'e'); return; }
+  const ok = await clip(_apiKeyRaw);
+  if (ok) toast('API key copied!', 's');
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -368,19 +394,56 @@ $('srvBtn')?.addEventListener('keydown', event => {
 });
 
 // ── Endpoint copy ─────────────────────────────────────────────────────────────
-$('btnCpRelay')  ?.addEventListener('click', () => {
+$('btnCpRelay')  ?.addEventListener('click', async () => {
   const url = ST.relayUrl || (ST.tunnelUrl ? ST.tunnelUrl + '/mcp' : null);
   if (!url) { toast(ST.relayError || 'Relay not connected yet', 'e'); return; }
-  clip(url); toast(ST.relayUrl ? 'MCP URL copied!' : 'Hosted relay unavailable. Secure tunnel URL copied.', 's');
+  const ok = await clip(url);
+  if (ok) toast(ST.relayUrl ? 'MCP URL copied!' : 'Hosted relay unavailable. Secure tunnel URL copied.', 's');
 });
-$('btnCpTunnel') ?.addEventListener('click', () => {
+$('btnCpTunnel') ?.addEventListener('click', async () => {
   if (!ST.tunnelUrl) { toast('Tunnel not connected yet', 'e'); return; }
-  clip(ST.tunnelUrl + '/mcp'); toast('Tunnel URL copied!', 's');
+  const ok = await clip(ST.tunnelUrl + '/mcp');
+  if (ok) toast('Tunnel URL copied!', 's');
 });
-$('btnCpLocal')  ?.addEventListener('click', () => {
-  clip(`http://localhost:${ST.serverPort || 3000}/mcp`);
-  toast('Local URL copied!', 's');
+$('btnCpLocal')  ?.addEventListener('click', async () => {
+  const ok = await clip(`http://localhost:${ST.serverPort || 3000}/mcp`);
+  if (ok) toast('Local URL copied!', 's');
 });
+
+// ── Delegated bindings (CSP `script-src 'self'` blocks inline handlers) ───────
+document.addEventListener('click', e => {
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { copyEl(cp.dataset.copy); return; }
+  if (e.target.closest('[data-stop]')) return;                      // swallow: open-link buttons
+  if (e.target.closest('.ccard-bd')) return;                        // swallow: text selection inside cards
+  if (e.target.closest('[data-copy-url]')) { copyUrlPreview(); return; }
+  const tg = e.target.closest('[data-toggle]');
+  if (tg) { toggleCC(tg.dataset.toggle); return; }
+  const fl = e.target.closest('.cat-filter-btn[data-filter]');
+  if (fl) { filterLogs(fl.dataset.filter); return; }
+});
+$('btnRetryRelay')       ?.addEventListener('click', retryRelayConn);
+$('btnManualRetryRelay') ?.addEventListener('click', retryRelayConn);
+$('btnCopyKey')          ?.addEventListener('click', copyKey);
+document.addEventListener('change', e => {
+  if (e.target.id === 'sPermModeDash') dashPermModeChanged();
+  else if (e.target.id === 'sPermMode') permModeChanged();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'sRelayDomain' || e.target.id === 'sName') updateUrlPreview();
+});
+document.addEventListener('click', e => {
+  const setCatBtn = e.target.closest('[data-setcat]');
+  if (setCatBtn) { setCat(setCatBtn.dataset.setcat, setCatBtn.dataset.enable === '1'); return; }
+  const tool = e.target.closest('[data-tool]');
+  if (tool) { toggleTool(tool.dataset.tool, tool.dataset.cat); return; }
+  const catHd = e.target.closest('.tcat-hd[data-cat]');
+  if (catHd && !e.target.closest('[data-stop]')) { toggleCat(catHd.dataset.cat); return; }
+});
+// Dashboard "View full activity" shortcut (was a CSP-blocked inline script)
+document.querySelectorAll('[data-page-link]').forEach(el => el.addEventListener('click', () =>
+  document.querySelector('[data-page="' + el.dataset.pageLink + '"]')?.click()
+));
 
 // ── Connect page ──────────────────────────────────────────────────────────────
 window.toggleCC = function(id) {
@@ -464,20 +527,20 @@ function renderTools() {
     if (!filtered.length) return '';
     const enabled = filtered.filter(t => toolState[t]).length;
     return `<div class="tcat ${cat.id === 'fs' ? 'open' : ''}" id="tc-${cat.id}">
-      <div class="tcat-hd" onclick="toggleCat('${cat.id}')">
+      <div class="tcat-hd" data-cat="${cat.id}">
         <svg class="tcat-ico" viewBox="0 0 24 24">${cat.icon}</svg>
         <span class="tcat-nm">${cat.name}</span>
         <span class="tcat-cnt">${enabled}/${filtered.length}</span>
-        <div class="tcat-btns" onclick="event.stopPropagation()" aria-label="${cat.name} selection">
-          <button class="cat-action" onclick="setCat('${cat.id}',true)" title="Enable every ${cat.name} capability"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>Enable</span></button>
-          <button class="cat-action muted" onclick="setCat('${cat.id}',false)" title="Disable every ${cat.name} capability"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8m0-8-8 8"/></svg><span>Disable</span></button>
+        <div class="tcat-btns" data-stop aria-label="${cat.name} selection">
+          <button class="cat-action" data-setcat="${cat.id}" data-enable="1" title="Enable every ${cat.name} capability"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg><span>Enable</span></button>
+          <button class="cat-action muted" data-setcat="${cat.id}" data-enable="0" title="Disable every ${cat.name} capability"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8m0-8-8 8"/></svg><span>Disable</span></button>
         </div>
         <svg class="tcat-chev" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
       </div>
       <div class="tcat-bd">
         <div class="tool-grid">
           ${filtered.map(t => `
-            <div class="ttag ${toolState[t] ? '' : 'off'}" onclick="toggleTool('${t}','${cat.id}')">
+            <div class="ttag ${toolState[t] ? '' : 'off'}" data-tool="${t}" data-cat="${cat.id}">
               <div class="mpill"><div class="mpill-t"><div class="mpill-h"></div></div></div>
               <span class="tnm">${t}</span>
             </div>`).join('')}
@@ -505,10 +568,10 @@ window.setCat     = function(catId, enabled) {
 $('toolSearch')  ?.addEventListener('input', e => { toolQ = e.target.value.trim(); renderTools(); });
 $('btnAllOn')    ?.addEventListener('click', () => { CATS.forEach(c=>c.tools.forEach(t=>toolState[t]=true));  saveTools(); renderTools(); toast('All tools enabled','s'); });
 $('btnAllOff')   ?.addEventListener('click', () => { CATS.forEach(c=>c.tools.forEach(t=>toolState[t]=false)); saveTools(); renderTools(); toast('All tools disabled'); });
-$('btnSaveTools')?.addEventListener('click', () => { saveTools(); toast('Preferences saved','s'); });
+$('btnSaveTools')?.addEventListener('click', async () => { await saveTools(); toast('Preferences saved. Restart server to update advertised tools.','s'); });
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
-let currentLogFilter = 'ALL';
+let currentLogFilter = 'TOOL';
 let allLogsCache = [];
 
 window.filterLogs = function(cat) {
@@ -528,17 +591,35 @@ function renderLogs() {
 
     const c = $('logContainer');
     const d = $('dashboardLogs');
+    const cnt = $('logCount');
+    if (cnt) cnt.textContent = filtered.length ? `${filtered.length} ${filtered.length === 1 ? 'entry' : 'entries'}` : '';
     if (!filtered.length) {
-      if (c) c.innerHTML = '<div class="log-empty">No activity found for category "' + currentLogFilter + '".</div>';
+      if (c) c.innerHTML = `<div class="log-empty">${currentLogFilter === 'TOOL' ? 'No tool calls yet — actions appear here as AI clients use tools.' : 'No activity found for category "' + currentLogFilter + '".'}</div>`;
       if (d) d.innerHTML = '<div class="log-empty">No activity yet. Start the server to see runtime events.</div>';
       return;
     }
-    if (d) d.innerHTML = logs.slice(0, 5).map(buildLogRow).join('');
+    if (c) c.innerHTML = filtered.slice(0, 120).map(buildLogRow).join('');
+    // Dashboard feed prefers recent tool actions, falls back to latest events.
+    const actionFeed = allLogsCache.filter(l => (l.category || '').toUpperCase() === 'TOOL');
+    if (d) d.innerHTML = (actionFeed.length ? actionFeed : allLogsCache).slice(0, 5).map(buildLogRow).join('');
   });
 }
 function buildLogRow(l) {
+  // Tool-action rows: compact, readable "what AI did just now" cards.
+  if (l.tool) {
+    const ok = l.success !== false && (l.status ? l.status < 400 : true);
+    const chips = [];
+    if (l.duration_ms != null) chips.push(`<span class="log-chip">${Math.round(l.duration_ms)}ms</span>`);
+    if (l.status) chips.push(`<span class="log-chip ${l.status < 400 ? 'ok' : 'err'}">${esc(l.method || 'POST')} ${l.status}</span>`);
+    const chipHtml = chips.length ? `<span class="log-chips">${chips.join('')}</span>` : '';
+    return `<div class="log-row">
+      <span class="log-ts">${l.time}</span>
+      <span class="act-dot ${ok ? 'ok' : 'err'}">${ok ? '✓' : '✕'}</span>
+      <span class="log-msg"><span class="act-tool">${esc(l.tool)}</span> ${esc(l.msg)}${l.error ? ' — <span class="log-err">' + esc(String(l.error)) + '</span>' : ''}</span>
+      ${chipHtml}
+    </div>`;
+  }
   const chips = [];
-  if (l.tool)       chips.push(`<span class="log-chip tool">${esc(l.tool)}</span>`);
   if (l.duration_ms != null) chips.push(`<span class="log-chip">${Math.round(l.duration_ms)}ms</span>`);
   if (l.status)     chips.push(`<span class="log-chip ${l.status < 400 ? 'ok' : 'err'}">${esc(l.method || '')} ${l.status}</span>`);
   if (l.success === false) chips.push(`<span class="log-chip err">failed</span>`);
@@ -561,7 +642,9 @@ function appendLog(l) {
     target.prepend(d.firstElementChild);
   });
 }
-$('btnClearLogs')?.addEventListener('click', () => {
+$('btnClearLogs')?.addEventListener('click', async () => {
+  await window.mcp?.clearLogs();
+  allLogsCache = [];
   const c = $('logContainer');
   if (c) c.innerHTML = '<div class="log-empty">Log cleared.</div>';
   const d = $('dashboardLogs');
@@ -574,7 +657,7 @@ document.addEventListener('keydown', event => {
     $('modal-regenerate-url')?.classList.remove('show');
     if ($('modal-shell')?.classList.contains('show')) $('btnDeny')?.click();
   }
-  if (event.ctrlKey && event.key >= '1' && event.key <= '5') {
+  if (event.ctrlKey && event.key >= '1' && event.key <= '6') {
     event.preventDefault();
     document.querySelectorAll('.nav-button')[Number(event.key) - 1]?.click();
   }
@@ -610,12 +693,11 @@ window.updateUrlPreview = function() {
   if (el) el.textContent = `https://${domain}/mcp/${name}`;
 };
 
-window.copyUrlPreview = function() {
+window.copyUrlPreview = async function() {
   const el = $('urlPreviewVal');
-  if (el) {
-    clip(el.textContent.trim());
-    toast('MCP URL copied!', 's');
-  }
+  if (!el) return;
+  const ok = await clip(el.textContent.trim());
+  if (ok) toast('MCP URL copied!', 's');
 };
 
 async function loadSettings() {
@@ -637,6 +719,11 @@ async function loadSettings() {
   const as = $('sAutostart');
   if (as) as.checked = cfg.autostart !== false;
   _apiKeyRaw = cfg.api_key || '';
+  if (Array.isArray(cfg.disabled_tools)) {
+    CATS.forEach(c => c.tools.forEach(t => { toolState[t] = !cfg.disabled_tools.includes(t); }));
+    localStorage.setItem('toolState', JSON.stringify(toolState));
+    updateToolBadge();
+  }
   updateKeyDisplay();
   updateUrlPreview();
   loadKeys();
@@ -690,6 +777,14 @@ const KEY_SCOPES = [
   ['pc:keyboard:hotkey', 'Keyboard shortcuts'],
   ['pc:qa:screenshot', 'Screen verification'],
   ['pc:network:nslookup', 'Network lookup'],
+  ['pc:clipboard:read', 'Read clipboard'],
+  ['pc:clipboard:write', 'Write clipboard'],
+  ['pc:notification:show', 'Show notifications and dialogs'],
+  ['pc:audio:control', 'Control audio'],
+  ['pc:memory:read', 'Read AI memory'],
+  ['pc:memory:write', 'Change AI memory'],
+  ['pc:git:read', 'Read Git repositories'],
+  ['pc:git:write', 'Change Git repositories'],
 ];
 
 function renderKeyScopePicker() {
@@ -772,7 +867,8 @@ $('btnGenApiKey')?.addEventListener('click', async () => {
   _apiKeyRaw = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   _keyVisible = true; // Reveal upon generation so user can see it
   updateKeyDisplay();
-  clip(_apiKeyRaw);
+  const copied = await clip(_apiKeyRaw);
+  if (copied) toast('New API key generated and copied!', 's');
 
   // Auto-save the new key immediately so it syncs with VPS relay & server
   const old = await window.mcp?.getConfig() || {};
@@ -782,7 +878,6 @@ $('btnGenApiKey')?.addEventListener('click', async () => {
   });
 
   renderConnect();
-  toast('New API key generated & copied to clipboard! (Auto-saved)', 's');
 });
 
 $('btnGenOauth')?.addEventListener('click', () => {

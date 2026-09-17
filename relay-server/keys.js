@@ -64,6 +64,14 @@ const FULL_SCOPES = [
   "pc:mouse:click",
   "pc:mouse:move",
   "pc:network:nslookup",
+  "pc:clipboard:read",
+  "pc:clipboard:write",
+  "pc:notification:show",
+  "pc:audio:control",
+  "pc:memory:read",
+  "pc:memory:write",
+  "pc:git:read",
+  "pc:git:write",
 ];
 
 // Normalize arbitrary scope input (array or comma string) into a clean array.

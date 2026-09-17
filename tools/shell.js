@@ -1,6 +1,13 @@
 const { execPowershell, execPowershellAsync, spawnPowershellBackground } = require("../lib/powershell");
 const os = require("os");
 
+const SENSITIVE_ENV = /(key|token|secret|password|passwd|credential|cookie|session|auth)/i;
+function maskEnvValue(name, value) {
+  if (!SENSITIVE_ENV.test(name)) return value;
+  const text = String(value);
+  return text ? `${text.slice(0, 2)}***${text.slice(-2)}` : "";
+}
+
 const shellTools = [
   {
     name: "run_command",
@@ -181,7 +188,7 @@ const shellTools = [
         if (val !== undefined) {
           return {
             success: true,
-            data: { variable, value: val }
+            data: { variable, value: maskEnvValue(variable, val), redacted: SENSITIVE_ENV.test(variable) }
           };
         } else {
           return {
@@ -193,7 +200,7 @@ const shellTools = [
       }
       return {
         success: true,
-        data: { variables: process.env }
+      data: { variables: Object.fromEntries(Object.entries(process.env).map(([name, value]) => [name, maskEnvValue(name, value)])), redacted: true }
       };
     },
   },

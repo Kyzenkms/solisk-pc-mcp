@@ -8,24 +8,23 @@ const path = require("path");
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
 const { StreamableHTTPClientTransport } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
 
-// Load API key
+// Load API key. Desktop userData is authoritative when testing desktop runtime.
 let apiKey = "";
-try {
-  const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
-  apiKey = cfg.api_key || "";
-} catch {}
-
+const appData = process.env.APPDATA || (process.platform === "darwin" ? process.env.HOME + "/Library/Application Support" : process.env.HOME + "/.config");
+for (const sub of ["pc-control-mcp", "pc-control-mcp-desktop"]) {
+  try {
+    const p = path.join(appData, sub, "config.json");
+    if (fs.existsSync(p)) {
+      const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (cfg.api_key) { apiKey = cfg.api_key; break; }
+    }
+  } catch {}
+}
 if (!apiKey) {
-  const appData = process.env.APPDATA || (process.platform === "darwin" ? process.env.HOME + "/Library/Application Support" : process.env.HOME + "/.config");
-  for (const sub of ["pc-control-mcp", "pc-control-mcp-desktop"]) {
-    try {
-      const p = path.join(appData, sub, "config.json");
-      if (fs.existsSync(p)) {
-        const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
-        if (cfg.api_key) { apiKey = cfg.api_key; break; }
-      }
-    } catch {}
-  }
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
+    apiKey = cfg.api_key || "";
+  } catch {}
 }
 
 function getContent(resp) {

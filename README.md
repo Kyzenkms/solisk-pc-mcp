@@ -1,7 +1,7 @@
-# Solisk PC Control MCP
+﻿# Solisk PC Control MCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/Kyzenkms/solisk-mcp/releases)
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/kyzenkms/pc-control-mcp/releases)
 
 Production-grade Model Context Protocol (MCP) server providing AI assistants with full, secure control over a Windows host machine. Exposes 96 system automation tools across filesystem, process execution, UI automation, system telemetry, network diagnostics, and git workflows.
 
@@ -14,22 +14,22 @@ Works out of the box with **Claude Desktop**, **Cursor**, **Cline**, **ChatGPT C
 ```
 [ AI Assistant ]
  (Claude.ai / ChatGPT / Cursor)
-       │
-       ▼  OAuth 2.1 / PKCE Bearer HTTPS
-┌───────────────────────────────────────────────────────────┐
-│ Cloud Relay Server (mcp.solisk.org)                       │
-│  - Authoritative OAuth 2.1 Authorization Gate             │
-│  - SQLite WAL State Store (Rooms, Tokens, Rate Limits)     │
-│  - Scrypt Hash Credential Verification                    │
-└─────────────────────────────┬─────────────────────────────┘
-                              │
-                              ▼  Encrypted WebSocket Tunnel
-┌───────────────────────────────────────────────────────────┐
-│ Local Host Engine (PC Control MCP Server)                 │
-│  - StreamableHTTP Engine (Port 3000)                      │
-│  - Path Sandboxing & Permission Gate (Turbo/Ask modes)     │
-│  - 96 Windows Automation Tool Handlers                    │
-└───────────────────────────────────────────────────────────┘
+       â”‚
+       â–¼  OAuth 2.1 / PKCE Bearer HTTPS
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Cloud Relay Server (mcp.solisk.org)                       â”‚
+â”‚  - Authoritative OAuth 2.1 Authorization Gate             â”‚
+â”‚  - SQLite WAL State Store (Rooms, Tokens, Rate Limits)     â”‚
+â”‚  - Scrypt Hash Credential Verification                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                              â”‚
+                              â–¼  Encrypted WebSocket Tunnel
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Local Host Engine (PC Control MCP Server)                 â”‚
+â”‚  - StreamableHTTP Engine (Port 3000)                      â”‚
+â”‚  - Path Sandboxing & Permission Gate (Turbo/Ask modes)     â”‚
+â”‚  - 96 Windows Automation Tool Handlers                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -41,7 +41,7 @@ Works out of the box with **Claude Desktop**, **Cursor**, **Cline**, **ChatGPT C
 - **Node.js:** `>= 22.5.0` (bundled inside Desktop Installer)
 
 ### 1. Download & Install
-Download the latest Windows installer from [Releases](https://github.com/Kyzenkms/solisk-mcp/releases):
+Download the latest Windows installer from [Releases](https://github.com/kyzenkms/pc-control-mcp/releases):
 ```
 PC Control MCP Setup 1.0.0.exe
 ```
@@ -120,7 +120,7 @@ Add the MCP server configuration to your client's config file (e.g., `%APPDATA%\
 To run the MCP server in headless mode without the Electron GUI:
 
 ```bash
-git clone https://github.com/Kyzenkms/solisk-mcp.git
+git clone https://github.com/kyzenkms/pc-control-mcp.git
 cd pc-control-mcp
 npm install
 
@@ -140,7 +140,7 @@ You can run your own cloud relay on a VPS to avoid third-party servers:
 ```bash
 # Docker + Caddy Automated Installation
 ssh root@YOUR_VPS
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/main/self-hosted-setup/vps/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kyzenkms/pc-control-mcp/main/self-hosted-setup/vps/install.sh)"
 ```
 
 Or execute manually using Node.js:
@@ -171,4 +171,4 @@ node test-live.js
 
 ## License
 
-[MIT](LICENSE) — Solisk PC Control MCP.
+[MIT](LICENSE) â€” Solisk PC Control MCP.

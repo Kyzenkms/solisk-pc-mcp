@@ -1,37 +1,47 @@
-version: "1.0.0-beta"
-date: "2026-08-18"
+version: "1.0.0"
+date: "2026-09-05"
 
-## 1.0.0-beta — Initial public beta release
+## 1.0.0 — First stable release
 
 ### Features
-- Desktop GUI with first-run onboarding wizard
-- Three connection modes: local-only, hosted relay, or self-hosted relay
-- 40+ MCP tools: files, system, keyboard, mouse, screen, audio, camera, processes
-- Credentials (API key, OAuth client ID/secret, device name) generated locally on
-  first run — no account, no sign-up, no telemetry
-- Scoped API keys with tickable permission categories
-- Master key + multiple scoped keys with create/revoke
-- Approval mode: auto-approve or confirm each tool call
-- Allowed paths whitelist (blank = full access)
+- Desktop app with first-run onboarding wizard
+- Connection modes: hosted relay (`mcp.solisk.org`), local-only, or self-hosted
+  relay (4 access modes, including Cloudflare tunnels with no open ports)
+- 96 MCP tools: files, shell/PowerShell, keyboard, mouse, screen + OCR,
+  audio, camera, processes, network, git, system info, memory, clipboard
+- Credentials generated locally on first run — no account, no sign-up, no
+  telemetry
+- Scoped per-user API keys with create/revoke via the relay admin API
+- Approval modes: `Ask` (confirm each tool call) or `Turbo` (auto-approve)
+- Allowed-paths whitelist (blank = full filesystem access)
 - Append-only audit log of every tool execution
+- Cloudflare quick-tunnel fallback when the hosted relay is unreachable
 - System tray with autostart option
-- Self-hosting via `self-hosted-setup/` (Docker + Caddy) or bare `relay-server/`
+- Persistent diagnostic log: `%APPDATA%\pc-control-mcp-desktop\main.log`
 
 ### Security
-- PKCE (S256) enforced on the OAuth flow
-- Relay rejects agent connections that supply no device code
+- OAuth 2.1 with mandatory PKCE (S256) for ChatGPT / Claude.ai connectors
+- TLS certificate verification enforced for all relay connections
+- Content-Security-Policy on the Electron renderer
 - PowerShell execution sandbox with denied-path defaults
 - Per-room isolation on the relay; scoped key checks before tool dispatch
+- Secure MCP URL regeneration: old room revoked before new identity is saved
+- Relay room deletion restricted to global admin token or matching owner key
+
+### Fixed since beta
+- Desktop startup race: runtime now starts reliably on packaged builds
+- Bounded relay reconnection with exponential backoff + manual retry button
+- Internet-offline detection pauses reconnection instead of burning retries
+- Explicit relay error state surfaced in the UI
 
 ### Known limitations
 - Installer is unsigned (SmartScreen warning on first run)
 - Windows only — no macOS or Linux desktop builds yet
-- Device-name collision not yet detected on the relay
 - Relay traffic is TLS-terminated at the relay, not end-to-end encrypted
 - Terminal UI (`app.js`) is not feature-parity with the GUI
 
 ### Upcoming
-- [ ] Signed installer
-- [ ] macOS and Linux desktop builds
+- [ ] Signed installer (EV certificate)
 - [ ] End-to-end encryption for relay traffic
-- [ ] Device-name uniqueness check
+- [ ] macOS and Linux desktop builds
+- [ ] Device-name uniqueness check on the relay

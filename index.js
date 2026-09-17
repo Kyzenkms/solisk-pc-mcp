@@ -131,7 +131,8 @@ async function startHttp(port) {
   // Handle OPTIONS preflight for ALL routes
   app.options(/.*/, cors(corsOptions));
 
-  app.use(express.json({ limit: "50mb" }));
+  // JSON-RPC/tool arguments should remain bounded; screenshots use binary IPC paths.
+  app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
 
   // ── Production middleware ────────────────────────────────────────────────────
@@ -371,7 +372,7 @@ async function startHttp(port) {
     const { dispatchTool } = require("./lib/registry");
     const toolName = req.params.name;
     try {
-      const result = await dispatchTool(toolName, req.body || {});
+       const result = await dispatchTool(toolName, req.body || {}, req.principal);
       res.json(result);
     } catch (e) {
       const status = e.message.startsWith("Unknown tool") ? 404 : 500;
@@ -433,7 +434,7 @@ async function startHttp(port) {
       version: "2.0.0",
     });
 
-    registerAllTools(server);
+    registerAllTools(server, req.principal);
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => `sess_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,

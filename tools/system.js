@@ -2,6 +2,12 @@ const { execPowershell, execPowershellAsync } = require("../lib/powershell");
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
+const { checkPath } = require("../lib/security");
+
+function assertAllowedPath(filePath) {
+  const result = checkPath(path.resolve(filePath));
+  if (!result.allowed) throw new Error(`Access denied: ${result.reason}`);
+}
 
 const systemTools = [
   {
@@ -125,6 +131,7 @@ const systemTools = [
     handler: async ({ save_path }) => {
       const { execPowershellAsync } = require("../lib/powershell");
       const tmpFile = save_path || path.join(os.tmpdir(), `screenshot_${Date.now()}.png`);
+      if (save_path) assertAllowedPath(save_path);
       const escaped = tmpFile.replace(/\\/g, "\\\\").replace(/'/g, "''");
 
       // Use GDI32 BitBlt via inline C# — avoids CopyFromScreen and SendKeys
@@ -270,6 +277,9 @@ Start-Sleep -Milliseconds 50
     },
     handler: async ({ path: filePath }) => {
       const resolved = path.resolve(filePath);
+      try { assertAllowedPath(resolved); } catch (err) {
+        return { success: false, error: err.message, code: "ACCESS_DENIED" };
+      }
       const res = await execPowershellAsync(`Start-Process '${resolved.replace(/'/g, "''")}'`);
       if (res.status === 0) {
         return { success: true, data: { opened: resolved } };
@@ -329,6 +339,8 @@ Start-Sleep -Milliseconds 50
           return { success: false, error: snapRes.stderr || snapRes.error || "Failed to capture screenshot for OCR", code: "SNAP_FAILED" };
         }
       }
+
+      if (image_path) assertAllowedPath(image_path);
 
       const ocrHelperPath = path.join(__dirname, "..", "lib", "ocr_helper.exe");
       const { execFileSync } = require("child_process");

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, clipboard } = require("electron");
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, clipboard, session } = require("electron");
 const path   = require("path");
 const fs     = require("fs");
 
@@ -73,6 +73,7 @@ let toolCount    = 0;
 let sessionCount = 0;
 let activeSessions = new Set();
 let logLines     = [];
+let runtimeReady = false;
 
 const dns = require("dns");
 function checkInternetAvailability() {
@@ -177,7 +178,7 @@ function addLog(msg, type = "info", meta = null) {
 }
 
 function getStatus() {
-  return { running: isRunning, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort, relayRetryCount, maxRelayRetries: MAX_RELAY_RETRIES, isInternetOffline };
+  return { running: isRunning && runtimeReady, starting: isRunning && !runtimeReady, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort, relayRetryCount, maxRelayRetries: MAX_RELAY_RETRIES, isInternetOffline };
 }
 
 function sendStatus() {
@@ -196,6 +197,7 @@ function sendStatus() {
 function startServer(cfg) {
   if (serverProc) { addLog("Start ignored: MCP server is already running", "warn"); return; }
   serverPort = cfg.port || 3000;
+  runtimeReady = false;
   let serverScript = path.join(process.resourcesPath, "server", "index.js");
   if (!fs.existsSync(serverScript)) {
     serverScript = path.join(__dirname, "index.js");
@@ -283,6 +285,7 @@ function startServer(cfg) {
     const previousSessions = activeSessions.size;
     serverProc = null;
     isRunning = false;
+    runtimeReady = false;
     tunnelUrl = null;
     relayUrl = null;
     sessionCount = 0;
@@ -293,11 +296,40 @@ function startServer(cfg) {
   proc.on("error", (e) => {
     if (serverProc !== proc) return;
     isRunning = false;
+    runtimeReady = false;
     addLog(`Server error: ${e.message}`, "error");
     sendStatus();
   });
   addLog(`Starting MCP server on port ${serverPort}...`,"info");
   isRunning = true; sendStatus();
+}
+
+function waitForRuntime(cfg, timeoutMs = 15000) {
+  const http = require("http");
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const probe = () => {
+      if (!serverProc || Date.now() >= deadline) return resolve(false);
+      const req = http.get({
+        hostname: "127.0.0.1",
+        port: cfg.port || serverPort || 3000,
+        path: "/health",
+        headers: { Authorization: `Bearer ${cfg.api_key || ""}` },
+      }, (res) => {
+        res.resume();
+        if (res.statusCode === 200) {
+          runtimeReady = true;
+          addLog("MCP runtime health check passed", "success");
+          sendStatus();
+          return resolve(true);
+        }
+        setTimeout(probe, 250);
+      });
+      req.setTimeout(1000, () => req.destroy());
+      req.on("error", () => setTimeout(probe, 250));
+    };
+    probe();
+  });
 }
 
 function stopServer() {
@@ -306,6 +338,7 @@ function stopServer() {
   stopTunnel();
   stopRelay();
   isRunning = false; tunnelUrl = null; relayUrl = null; sessionCount = 0;
+  runtimeReady = false;
   activeSessions.clear();
   sendStatus(); addLog("Server stopped","warn");
 }
@@ -412,9 +445,7 @@ function startRelay(cfg) {
     }
 
     addLog(`Connecting to VPS relay at wss://${domain}?code=${encodeURIComponent(name)} (attempt ${relayRetryCount + 1}/${MAX_RELAY_RETRIES})...`, "info", { category: "CONN" });
-    const ws = new WebSocket(RELAY_WS, {
-      rejectUnauthorized: false
-    });
+    const ws = new WebSocket(RELAY_WS);
     relayWs = ws;
 
     ws.on("open", () => {
@@ -465,6 +496,7 @@ function startRelay(cfg) {
               type: "init",
               code: name,
               apiKey: cfg.api_key,
+              userKeys: Array.isArray(cfg.user_keys) ? cfg.user_keys : [],
               manifest: manifest || undefined,
               openapi: openapi || undefined
             }));
@@ -566,7 +598,10 @@ function startRelay(cfg) {
           const newSid = localRes.headers["mcp-session-id"] || sessionId;
           const contentType = localRes.headers["content-type"] || "";
           let body = "";
-          localRes.on("data", c => body += c);
+          localRes.on("data", c => {
+            body += c;
+            if (Buffer.byteLength(body) > 50 * 1024 * 1024) localReq.destroy(new Error("Local relay response exceeded 50 MB"));
+          });
           localRes.on("end", () => {
             if (generation !== relayGeneration || relayWs !== ws || ws.readyState !== 1) return;
             try {
@@ -622,6 +657,7 @@ function startRelay(cfg) {
             payload: { error: e.message },
           }));
         });
+        localReq.setTimeout(55_000, () => localReq.destroy(new Error("Local relay request timed out")));
         if (bodyData !== null) {
           localReq.write(bodyData);
         }
@@ -707,12 +743,17 @@ function createWindow() {
     fs.appendFileSync(logPath, `[RENDERER] ${message} (at ${path.basename(sourceId)}:${line})\n`);
   });
 
-  win.webContents.once("dom-ready", () => {
+  win.webContents.once("dom-ready", async () => {
     const cfg = loadConfig();
     if (cfg.ready && cfg.autostart !== false) {
       startServer(cfg);
-      if (cfg.relay_enabled !== false) startTunnel(cfg);
-      startRelay(cfg);
+      if (await waitForRuntime(cfg)) {
+        if (cfg.relay_enabled !== false) startTunnel(cfg);
+        startRelay(cfg);
+      } else {
+        addLog("MCP runtime did not become ready within 15 seconds", "error");
+        stopServer();
+      }
     } else {
       sendStatus();
     }
@@ -753,13 +794,18 @@ function createTray() {
     { label: "Copy VPS URL",    enabled: !!relayUrl,  click: () => { if (relayUrl)  clipboard.writeText(relayUrl); } },
     { label: "Open Dashboard", click: () => { win.show(); win.focus(); win.moveTop(); } },
     { type: "separator" },
-    { label: isRunning ? "Stop Server" : "Start Server", click: () => {
+    { label: isRunning ? "Stop Server" : "Start Server", click: async () => {
         const cfg = loadConfig();
         if (isRunning) stopServer();
         else if (cfg.ready) {
           startServer(cfg);
-          if (cfg.relay_enabled !== false) startTunnel(cfg);
-          startRelay(cfg);
+          if (await waitForRuntime(cfg)) {
+            if (cfg.relay_enabled !== false) startTunnel(cfg);
+            startRelay(cfg);
+          } else {
+            addLog("MCP runtime did not become ready within 15 seconds", "error");
+            stopServer();
+          }
         }
         setTimeout(rebuild, 1000);
     }},
@@ -774,6 +820,13 @@ function createTray() {
 ipcMain.handle("get-status",  () => getStatus());
 ipcMain.handle("get-config",  () => loadConfig());
 ipcMain.handle("get-logs",    () => logLines);
+ipcMain.handle("clear-logs",  () => { logLines = []; return true; });
+// Main-process clipboard: navigator.clipboard in the renderer fails silently
+// without focus/permissions — this always works.
+ipcMain.handle("write-clipboard", (_, text) => {
+  clipboard.writeText(String(text ?? ""));
+  return true;
+});
 
 // ── Config repair / restore ───────────────────────────────────────────────────
 ipcMain.handle("config-diagnose", () => {
@@ -868,6 +921,12 @@ ipcMain.handle("start-server",async () => {
   const cfg = loadConfig();
   if (!cfg.ready) return false;
   startServer(cfg);
+  const ready = await waitForRuntime(cfg);
+  if (!ready) {
+    addLog("MCP runtime did not become ready within 15 seconds", "error");
+    stopServer();
+    return false;
+  }
   if (cfg.relay_enabled !== false) startTunnel(cfg);
   startRelay(cfg);
   return true;
@@ -935,6 +994,7 @@ ipcMain.handle("save-config", (_, c) => {
         type: "init",
         code: newConfig.name || "pc",
         apiKey: newConfig.api_key || "",
+        userKeys: Array.isArray(newConfig.user_keys) ? newConfig.user_keys : [],
       }));
       addLog("Synchronized API key with VPS relay", "success");
     } catch (e) {
@@ -982,7 +1042,6 @@ function relayAdminRequest(method, apiPath, body) {
       hostname: cleanDomain,
       path: apiPath,
       method,
-      rejectUnauthorized: false,
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
@@ -1008,7 +1067,7 @@ function relayAdminRequest(method, apiPath, body) {
 ipcMain.handle("relay-list-keys", async () => {
   const cfg = loadConfig();
   const keys = Array.isArray(cfg.user_keys) ? cfg.user_keys : [];
-  return { ok: true, keys, online: "online" };
+  return { ok: true, keys: keys.map(({ api_key, key, ...item }) => item), online: relayWs && relayWs.readyState === 1 ? "online" : "offline" };
 });
 
 ipcMain.handle("relay-create-key", async (_, payload) => {
@@ -1035,6 +1094,9 @@ ipcMain.handle("relay-create-key", async (_, payload) => {
   userKeys.push(newKeyObj);
   const next = { ...cfg, user_keys: userKeys };
   saveConfig(next);
+  if (relayWs && relayWs.readyState === 1) {
+    relayWs.send(JSON.stringify({ type: "init", code: cfg.name, apiKey: cfg.api_key, userKeys }));
+  }
   addLog(`Created scope-only API key "${label}"`, "success");
 
   return { ok: true, key: newKeyObj };
@@ -1046,6 +1108,9 @@ ipcMain.handle("relay-revoke-key", async (_, keyId) => {
   const filtered = userKeys.filter(k => k.id !== keyId && k.label !== keyId);
   const next = { ...cfg, user_keys: filtered };
   saveConfig(next);
+  if (relayWs && relayWs.readyState === 1) {
+    relayWs.send(JSON.stringify({ type: "init", code: cfg.name, apiKey: cfg.api_key, userKeys: filtered }));
+  }
   addLog(`Revoked API key "${keyId}"`, "info");
   return { ok: true };
 });
@@ -1063,6 +1128,19 @@ ipcMain.handle("relay-set-mode", async (_, mode) => {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   console.log("App ready");
+
+  // Content-Security-Policy for the renderer
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https: wss:; font-src 'self' https://fonts.gstatic.com"
+        ],
+      },
+    });
+  });
+
   createWindow();
   createTray();
   // NOTE: startServer/Tunnel/Relay is called inside dom-ready (createWindow),

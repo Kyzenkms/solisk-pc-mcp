@@ -21,6 +21,12 @@ const { hashKey, verifyKey, normalizeScopes, newKeyBytes, FULL_SCOPES } = requir
 const { toolScopeOf, hasScope } = require("./scopes");
 const { createStateStore } = require("./state-store");
 
+function safeTokenEqual(left, right) {
+  const a = Buffer.from(String(left || ""));
+  const b = Buffer.from(String(right || ""));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 const app = express();
 
 // Trust proxy (we're behind nginx/cloudflare in production)
@@ -30,7 +36,8 @@ app.set("trust proxy", 1);
 // express.json parses application/json bodies (MCP JSON-RPC from Claude/ChatGPT)
 // express.urlencoded parses form bodies (OAuth form submissions)
 // NOTE: Do NOT add express.text here — it would clobber already-parsed bodies.
-app.use(express.json({ limit: "50mb", strict: false }));
+// MCP requests are small; keep relay memory bounded against upload/JSON DoS.
+app.use(express.json({ limit: "2mb", strict: false }));
 app.use(express.urlencoded({ extended: true }));
 
 // Prevent malformed JSON payloads from throwing uncaught SyntaxError exceptions & crashing PM2
@@ -103,6 +110,50 @@ function rateLimit(opts = {}) {
 setInterval(() => {
   try { stateStore.pruneRates(Date.now() - 120_000); } catch (error) { console.error("[relay] Rate bucket cleanup failed:", error.message); }
 }, 60_000).unref();
+
+// ── Intruder taunts ───────────────────────────────────────────────────────────
+// Scanner-bait paths get a playful 404. Real API clients never hit these.
+// Plain auth failures (missing/bad key on first tries) stay strictly standard —
+// humor only shows for obvious probing: known exploit paths or repeated bad keys.
+const PROBE_RE = /wp-admin|wp-login|xmlrpc\.php|phpmyadmin|pma\/|\/\.env|\.git\/config|etc\/passwd|etc\/shadow|manager\/html|cgi-bin|\/actuator|\/\.aws|vendor\/phpunit|\.sql$|\.bak$|\.bak\.|web\.config|admin\.php|\/\.ssh|id_rsa|\.DS_Store|\.svn|\/\.docker/i;
+const PROBE_TAUNTS = [
+  "This is an MCP relay, not a WordPress install. Whatever you're scanning for isn't here.",
+  "No .env on this server. Secrets live scrypt-hashed, salted, and out of your reach.",
+  "Your scanner worked very hard for this 404. It has earned a rest. Tell it to clock out.",
+  "Nice probing. Very retro. The honeypot is empty and the bees are unionized.",
+  "Path found: exactly nothing. Try /mcp/<room-code> with a real Bearer token — or don't.",
+  "Bold strategy, announcing your attack pattern to the logs like that.",
+  "404 — but hey, thanks for the free penetration test report. Invoice is on the way.",
+];
+const AUTH_TAUNTS = [
+  "Attempt #N with a wrong key. Persistence: admirable. Access: still no.",
+  "That's #N wrong keys from your address. The keys don't change no matter how often you knock.",
+  "#N failures and counting. We're starting to think you don't actually have the key.",
+  "Rough day? That's attempt #N. Maybe take a walk, hydrate, come back with the actual token.",
+];
+function pickTaunt(list) { return list[Math.floor(Math.random() * list.length)]; }
+const authFailBuckets = new Map();
+function noteAuthFail(ip) {
+  const now = Date.now();
+  let b = authFailBuckets.get(ip);
+  if (!b) { b = []; authFailBuckets.set(ip, b); }
+  while (b.length && b[0] < now - 10 * 60_000) b.shift();
+  b.push(now);
+  return b.length;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, b] of authFailBuckets) {
+    while (b.length && b[0] < now - 10 * 60_000) b.shift();
+    if (!b.length) authFailBuckets.delete(ip);
+  }
+}, 60_000).unref();
+app.use((req, res, next) => {
+  if (PROBE_RE.test(req.path || "")) {
+    return res.status(404).json({ error: "not_found", error_description: pickTaunt(PROBE_TAUNTS) });
+  }
+  next();
+});
 
 // ── Periodic in-memory state cleanup ────────────────────────────────────────
 // dynamicClients: Claude/ChatGPT register a new OAuth client per auth flow.
@@ -383,7 +434,26 @@ server.on("upgrade", (request, socket, head) => {
               keys.push({ id: "owner", label: "owner", scopes: FULL_SCOPES.slice(), salt, hash, createdAt: Date.now() });
             }
           }
-          rooms[targetCode] = { ...prev, code: targetCode, keys, updatedAt: Date.now() };
+          // Desktop-managed scoped keys are synchronized on every init. Replace
+          // prior desktop keys atomically so revocation takes effect immediately.
+          const ownerKeys = keys.filter(k => k.label === "owner" || (k.source !== "desktop" && !String(k.id || "").startsWith("user-")));
+          const syncedKeys = Array.isArray(data.userKeys) ? data.userKeys.slice(0, 5).flatMap((item) => {
+            const plaintext = String(item && (item.api_key || item.key) || "").trim();
+            if (!plaintext) return [];
+            const scopes = normalizeScopes(item.scopes);
+            if (scopes.some(scope => !FULL_SCOPES.includes(scope) && scope !== "*")) return [];
+            const { salt, hash } = hashKey(plaintext);
+            return [{
+              id: String(item.id || "user-" + randomToken(8)),
+              label: String(item.label || item.id || "desktop-key"),
+              scopes: scopes.length ? scopes : FULL_SCOPES.slice(),
+              salt,
+              hash,
+              source: "desktop",
+              createdAt: Number(item.createdAt) || Date.now(),
+            }];
+          }) : keys.filter(k => k.source === "desktop");
+          rooms[targetCode] = { ...prev, code: targetCode, keys: ownerKeys.concat(syncedKeys), updatedAt: Date.now() };
           saveState();
           console.log(`[relay] Room initialized: ${targetCode} (owner key: ${cleanKey ? 'registered' : 'none'})`);
           return;
@@ -840,9 +910,19 @@ function requireAuth(req, res, next) {
       "WWW-Authenticate",
       `Bearer realm="pc-control-mcp", resource_metadata="${resourceMetadata}"`
     );
+    // Missing header = plain rejection → keep the standard helpful message.
+    // A supplied-but-wrong key gets a neutral message first; after repeated
+    // failures from the same IP the relay switches to taunts.
+    const authHeader = String(req.headers["authorization"] || "");
+    const suppliedKey = /^Bearer\s+\S+/i.test(authHeader);
+    let description = "Bearer token required. Authenticate via OAuth or supply a valid per-user API key.";
+    if (suppliedKey) {
+      const fails = noteAuthFail(req.ip || req.socket.remoteAddress || "anon");
+      description = fails >= 5 ? pickTaunt(AUTH_TAUNTS).replace("#N", String(fails)) : "Invalid API key or token.";
+    }
     return res.status(401).json({
       error: "unauthorized",
-      error_description: "Bearer token required. Authenticate via OAuth or supply a valid per-user API key.",
+      error_description: description,
       oauth_discovery: `${base}/.well-known/oauth-authorization-server`,
     });
   }
@@ -1695,7 +1775,7 @@ app.post("/tool/:name", (req, res) => {
 });
 
 // ── Admin API: per-user keys ───────────────────────────────────────────────────
-// Protected by the RELAY_ADMIN_TOKEN environment variable (or default key).
+// Protected by RELAY_ADMIN_TOKEN or a room owner key.
 // Lets the operator add/remove individual users, each with their own API key
 // and an explicit scope allow-list. The plaintext key is returned ONCE at
 // creation time; only its scrypt hash is stored.
@@ -1705,8 +1785,8 @@ function adminAuth(req, res, next) {
   const t = auth.startsWith("Bearer ") ? auth.slice(7).trim() : auth.trim();
   const roomCodeHeader = req.headers["x-room-code"] || req.query.code || (req.body && req.body.code);
 
-  // 1. If global RELAY_ADMIN_TOKEN is provided and matches, allow full admin
-  if (adminToken && t && t === adminToken) {
+  // 1. Global admin token grants cross-room administration.
+  if (adminToken && t && safeTokenEqual(t, adminToken)) {
     req.isAdmin = true;
     return next();
   }
@@ -1735,18 +1815,12 @@ function adminAuth(req, res, next) {
     }
   }
 
-  // 4. Default: If no RELAY_ADMIN_TOKEN is configured on relay server, allow desktop client requests
-  if (!adminToken) {
-    if (roomCodeHeader) req.roomCode = roomCodeHeader;
-    return next();
-  }
-
   return res.status(401).json({ error: "unauthorized", error_description: "Invalid or missing API key." });
 }
 
 app.get("/admin/rooms", adminAuth, (req, res) => {
   const targetCode = req.roomCode || req.headers["x-room-code"] || req.query.code;
-  const entries = Object.entries(rooms).filter(([code]) => !targetCode || code === targetCode);
+  const entries = Object.entries(rooms).filter(([code]) => req.isAdmin || code === targetCode);
   const list = entries.map(([code, room]) => ({
     code,
     clients: (clients.has(code) && clients.get(code).readyState === 1) ? "online" : "offline",
@@ -1758,6 +1832,7 @@ app.get("/admin/rooms", adminAuth, (req, res) => {
 });
 
 app.post("/admin/rooms", adminAuth, (req, res) => {
+  if (!req.isAdmin) return res.status(403).json({ error: "forbidden", error_description: "Only global administrator may create rooms." });
   const { code, label } = req.body || {};
   const roomCode = String(code || "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(roomCode)) {
@@ -1802,6 +1877,9 @@ app.post("/admin/keys", adminAuth, (req, res) => {
   const { code, label, scopes } = req.body || {};
   const roomCode = String(code || req.roomCode || "").trim();
   if (!roomCode) return res.status(400).json({ error: "missing_room_code", error_description: "Room code required." });
+  if (!req.isAdmin && (req.roomCode !== roomCode || req.roomKey?.label !== "owner")) {
+    return res.status(403).json({ error: "forbidden", error_description: "Room owner may only issue keys for its own room." });
+  }
 
   let room = rooms[roomCode];
   if (!room) {
@@ -1862,6 +1940,9 @@ app.delete("/admin/keys/:keyId", adminAuth, (req, res) => {
     if (!room || !Array.isArray(room.keys)) continue;
     const idx = room.keys.findIndex(k => (k.id || k.label) === keyId);
     if (idx >= 0) {
+      if (!req.isAdmin && (req.roomCode !== roomCode || req.roomKey?.label !== "owner")) {
+        return res.status(403).json({ error: "forbidden", error_description: "Only the room owner may delete this key." });
+      }
       room.keys.splice(idx, 1);
       room.updatedAt = Date.now();
       saveState();
@@ -1872,7 +1953,7 @@ app.delete("/admin/keys/:keyId", adminAuth, (req, res) => {
 });
 
 // For humans: report per-room key labels + scopes (never hashes/plaintext).
-app.get("/admin/health", (req, res) => {
+app.get("/admin/health", adminAuth, (req, res) => {
   res.json({
     status: "ok",
     rooms: Object.keys(rooms).length,
@@ -1906,6 +1987,13 @@ function mcpToolNameFromBody(req) {
   return null;
 }
 
+function mcpToolNamesFromBody(req) {
+  const items = Array.isArray(req.body) ? req.body : [req.body];
+  return items.flatMap(item => item && item.method === "tools/call" && item.params && typeof item.params.name === "string"
+    ? [item.params.name]
+    : []);
+}
+
 app.use((req, res) => {
   if (req.path === "/favicon.ico") return res.status(404).end();
 
@@ -1928,14 +2016,14 @@ app.use((req, res) => {
   // Enforce per-user key scopes BEFORE forwarding tools/call to the local PC.
   // Applies to per-user keys AND OAuth access tokens with a restricted scope.
   if (principal && principal.scopes) {
-    const toolName = mcpToolNameFromBody(req);
-    if (toolName && !hasScope(principal.scopes, toolName)) {
+    const deniedTool = mcpToolNamesFromBody(req).find(toolName => !hasScope(principal.scopes, toolName));
+    if (deniedTool) {
       return res.status(403).json({
         jsonrpc: "2.0",
         id: (req.body && req.body.id) != null ? req.body.id : null,
         error: {
           code: -32003,
-          message: `Tool "${toolName}" is not allowed for this API key (missing scope ${toolScopeOf(toolName)}).`,
+          message: `Tool "${deniedTool}" is not allowed for this API key (missing scope ${toolScopeOf(deniedTool) || "explicit mapping"}).`,
         },
       });
     }
@@ -1966,7 +2054,9 @@ app.use((req, res) => {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "Access-Control-Allow-Origin": "*",
+        ...(req.headers.origin && ALLOWED_ORIGINS.has(req.headers.origin)
+          ? { "Access-Control-Allow-Origin": req.headers.origin, Vary: "Origin" }
+          : {}),
       });
 
       // Tag the response object so we can look it up by code when sessionId is missing (ChatGPT fix)
