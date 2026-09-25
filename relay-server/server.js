@@ -273,6 +273,20 @@ function saveState() {
 
 const REQUEST_TIMEOUT = 60_000; // 60s for tool execution
 
+// ── Overload guards ──────────────────────────────────────────────────────────
+// ponytail: fixed caps, raise only if 429/503 seen in prod logs
+const MAX_INFLIGHT_PER_ROOM = 8;
+const MAX_INFLIGHT_GLOBAL = 200;
+const MAX_WS_BUFFERED = 1 << 20; // 1MiB per PC socket
+const MAX_SSE_BUF = 20;
+const roomInflight = new Map(); // code -> count
+function inflightInc(code) { roomInflight.set(code, (roomInflight.get(code) || 0) + 1); }
+function inflightDec(code) {
+  const n = (roomInflight.get(code) || 1) - 1;
+  if (n <= 0) roomInflight.delete(code);
+  else roomInflight.set(code, n);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function randomToken(bytes = 32) { return crypto.randomBytes(bytes).toString("hex"); }
 
@@ -520,6 +534,7 @@ server.on("upgrade", (request, socket, head) => {
               pending.res.status(statusCode).json(payload || { ok: true });
             }
             pendingReqs.delete(data.requestId);
+            if (!pending._promise) inflightDec(pending.code);
 
             // ALSO push the result over the open SSE stream for that session.
             // SSE-first MCP clients (ChatGPT OpenAI SDK, OpenClaw) do NOT read
@@ -555,7 +570,9 @@ server.on("upgrade", (request, socket, head) => {
               // so it can be flushed when any SSE stream opens for this PC
               const bufKey = effectiveSessionId || `code:${pending.code}`;
               if (!sseEventBuf.has(bufKey)) sseEventBuf.set(bufKey, []);
-              sseEventBuf.get(bufKey).push({ event: "message", data: JSON.stringify(payload), ts: Date.now() });
+              const buf = sseEventBuf.get(bufKey);
+              buf.push({ event: "message", data: JSON.stringify(payload), ts: Date.now() });
+              if (buf.length > MAX_SSE_BUF) buf.splice(0, buf.length - MAX_SSE_BUF);
               console.log(`[relay] SSE event buffered under key=${bufKey} (will flush on stream open)`);
               setTimeout(() => sseEventBuf.delete(bufKey), 90_000);
             }
@@ -599,6 +616,7 @@ server.on("upgrade", (request, socket, head) => {
           clearTimeout(pending.timer);
           try { pending.res.status(502).json({ error: "PC client disconnected" }); } catch {}
           pendingReqs.delete(reqId);
+          if (pending.res) inflightDec(code);
         }
       }
     });
@@ -700,6 +718,13 @@ function forwardToPC(code, req, res, extraPayload = {}) {
       error_description: `PC client "${code}" is not online. Start the PC Control MCP app on your computer.`,
     });
   }
+  if (pendingReqs.size >= MAX_INFLIGHT_GLOBAL) {
+    return res.status(503).json({ error: "overloaded", error_description: "Relay busy, retry shortly." });
+  }
+  if ((roomInflight.get(code) || 0) >= MAX_INFLIGHT_PER_ROOM) {
+    res.header("Retry-After", "2");
+    return res.status(429).json({ error: "room_busy", error_description: "Too many in-flight requests for this PC." });
+  }
 
   // Extract session ID from all possible locations ChatGPT might use
   const incomingSessionId =
@@ -745,6 +770,12 @@ function forwardToPC(code, req, res, extraPayload = {}) {
 
 function _doForward(code, req, res, sessionId, extraPayload = {}) {
   const ws = clients.get(code);
+  if (!ws || ws.readyState !== 1) {
+    return res.status(503).json({ error: "pc_offline", error_description: `PC client "${code}" is not online.` });
+  }
+  if ((ws.bufferedAmount || 0) > MAX_WS_BUFFERED) {
+    return res.status(503).json({ error: "pc_overloaded", error_description: "PC socket backpressured, retry shortly." });
+  }
   const requestId = crypto.randomBytes(8).toString("hex");
   const toolTimeout = req.body?.params?.arguments?.timeout_ms || req.body?.timeout_ms;
   const timeoutMs = (typeof toolTimeout === "number" && toolTimeout > 0) ? (toolTimeout + 10000) : REQUEST_TIMEOUT;
@@ -752,6 +783,7 @@ function _doForward(code, req, res, sessionId, extraPayload = {}) {
   const timer = setTimeout(() => {
     if (pendingReqs.has(requestId)) {
       pendingReqs.delete(requestId);
+      inflightDec(code);
       try {
         if (req.body && req.body.jsonrpc === "2.0") {
           res.status(200).json({
@@ -767,6 +799,7 @@ function _doForward(code, req, res, sessionId, extraPayload = {}) {
   }, timeoutMs);
 
   pendingReqs.set(requestId, { res, timer, code, sessionId, principal: req.principal });
+  inflightInc(code);
 
   // The relay has already authenticated the external client (Claude/ChatGPT).
   // When forwarding to the local PC we replace the external OAuth/user token
@@ -785,18 +818,25 @@ function _doForward(code, req, res, sessionId, extraPayload = {}) {
     ...(pcApiKey ? { "authorization": `Bearer ${pcApiKey}` } : {}),
   };
 
-  ws.send(JSON.stringify({
-    type: "request",
-    requestId,
-    sessionId: sessionId || null,
-    payload: {
-      method:  req.method,
-      path:    req.path,
-      headers: forwardedHeaders,
-      body:    req.body,
-      ...extraPayload,
-    },
-  }));
+  try {
+    ws.send(JSON.stringify({
+      type: "request",
+      requestId,
+      sessionId: sessionId || null,
+      payload: {
+        method:  req.method,
+        path:    req.path,
+        headers: forwardedHeaders,
+        body:    req.body,
+        ...extraPayload,
+      },
+    }));
+  } catch {
+    clearTimeout(timer);
+    pendingReqs.delete(requestId);
+    inflightDec(code);
+    return res.status(502).json({ error: "pc_send_failed", error_description: "Failed to send to PC client." });
+  }
 }
 
 // ── Authorization gate ───────────────────────────────────────────────────────
