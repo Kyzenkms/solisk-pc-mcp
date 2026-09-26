@@ -496,6 +496,7 @@ function startRelay(cfg) {
               type: "init",
               code: name,
               apiKey: cfg.api_key,
+              previousApiKey: cfg.previous_api_key || undefined,
               userKeys: Array.isArray(cfg.user_keys) ? cfg.user_keys : [],
               manifest: manifest || undefined,
               openapi: openapi || undefined
@@ -983,7 +984,14 @@ ipcMain.handle("regenerate-mcp-url", async () => {
   return { ok: true, name: next.name, url: `https://${domain}/mcp/${next.name}`, status: getStatus() };
 });
 ipcMain.handle("save-config", (_, c) => {
-  const newConfig = { ...loadConfig(), ...c };
+  const prev = loadConfig();
+  const newConfig = { ...prev, ...c };
+  // Track rotation: the relay only accepts a new owner key when the previous
+  // one is presented alongside it. Without this, any master-key regen bricks
+  // the room into a reject loop needing manual admin deletion.
+  if (newConfig.api_key && prev.api_key && newConfig.api_key !== prev.api_key) {
+    newConfig.previous_api_key = prev.api_key;
+  }
   saveConfig(newConfig);
   addLog("Config saved", "info");
 
@@ -994,6 +1002,7 @@ ipcMain.handle("save-config", (_, c) => {
         type: "init",
         code: newConfig.name || "pc",
         apiKey: newConfig.api_key || "",
+        previousApiKey: newConfig.previous_api_key || undefined,
         userKeys: Array.isArray(newConfig.user_keys) ? newConfig.user_keys : [],
       }));
       addLog("Synchronized API key with VPS relay", "success");

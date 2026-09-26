@@ -410,16 +410,34 @@ server.on("upgrade", (request, socket, head) => {
           if (hasOwnerKey) {
             const ownerMatch = cleanKey && existingKeys.some(k => k.label === "owner" && k.salt && k.hash && verifyKey(cleanKey, k.salt, k.hash));
             if (!ownerMatch) {
-              console.log(`[relay] REJECTED init/takeover of '${targetCode}' (invalid owner API key)`);
-              try {
-                ws.send(JSON.stringify({
-                  type: "error",
-                  code: "ROOM_CONFLICT",
-                  message: `Invalid API key for room '${targetCode}'. Unauthorized takeover attempt blocked.`,
-                }));
-              } catch {}
-              try { ws.close(); } catch {}
-              return;
+              // Legit rotation: the PC proves the previous key, then falls
+              // through — the upsert below installs the new owner hash.
+              // Without this, any master-key regen bricks the room (reject
+              // loop) and needs manual admin deletion.
+              const prevKey = (data.previousApiKey || "").trim();
+              const prevMatch = prevKey && prevKey !== cleanKey && existingKeys.some(k => k.label === "owner" && k.salt && k.hash && verifyKey(prevKey, k.salt, k.hash));
+              if (!prevMatch || !cleanKey) {
+                console.log(`[relay] REJECTED init/takeover of '${targetCode}' (invalid owner API key)`);
+                try {
+                  ws.send(JSON.stringify({
+                    type: "error",
+                    code: "ROOM_CONFLICT",
+                    message: `Invalid API key for room '${targetCode}'. Unauthorized takeover attempt blocked.`,
+                  }));
+                } catch {}
+                try { ws.close(); } catch {}
+                return;
+              }
+              console.log(`[relay] Owner key rotated for '${targetCode}'`);
+              // Rotation invalidates everything bound to the old credential:
+              // OAuth bearer tokens, cached sessions, and session bindings.
+              for (const [tok, rec] of Object.entries(tokens)) {
+                if (rec && rec.code === targetCode) delete tokens[tok];
+              }
+              codeSession.delete(targetCode);
+              for (const [sid, p] of sessionPrincipals) {
+                if (p && p.code === targetCode) sessionPrincipals.delete(sid);
+              }
             }
           }
 
