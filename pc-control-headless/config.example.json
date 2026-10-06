@@ -1,0 +1,10 @@
+{
+  "api_key": "PASTE_GENERATED_KEY_OR_LEAVE_EMPTY_FOR_AUTOGEN",
+  "port": 3000,
+  "permission_mode": "always",
+  "allowed_paths": [],
+  "denied_paths": [],
+  "disabled_tools": [],
+  "user_keys": [],
+  "rate_limit": { "windowMs": 60000, "max": 200 }
+}

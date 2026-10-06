@@ -221,6 +221,13 @@ function makePkce() {
       assert.strictEqual(r.status, 400);
     });
 
+    await test("Registration accepts claude.com redirect (Anthropic domain)", async () => {
+      const r = await req("POST", "/mcp/testroom/oauth/register",
+        { client_name: "Claude", redirect_uris: ["https://claude.com/api/auth/callback/connector"] },
+        { "content-type": "application/json" });
+      assert.strictEqual(r.status, 201);
+    });
+
     // -- 4. Authorization endpoint -------------------------------------------
     process.stdout.write("\nAuthorization\n");
 
@@ -532,13 +539,13 @@ function makePkce() {
   process.stdout.write(`\n${"-".repeat(60)}\n`);
   process.stdout.write(`OAuth relay regression: ${passed}/${total} passed`);
   if (failed > 0) {
-    process.stdout.write(` — ${failed} FAILED\n`);
+    process.stdout.write(` ï¿½ ${failed} FAILED\n`);
     for (const { name, err } of failures) {
       process.stdout.write(`  ? ${name}\n    ${err.stack || err.message}\n`);
     }
     process.exitCode = 1;
   } else {
-    process.stdout.write(" — ALL PASSED ?\n");
+    process.stdout.write(" ï¿½ ALL PASSED ?\n");
   }
 })().catch(err => {
   console.error("\n[fatal]", err.message);

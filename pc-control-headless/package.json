@@ -1,0 +1,25 @@
+{
+  "name": "pc-control-headless",
+  "version": "1.0.0",
+  "description": "Headless CLI build of PC Control MCP — VPS-ready MCP server (stdio + StreamableHTTP), no Electron, no GUI.",
+  "type": "commonjs",
+  "bin": {
+    "pc-control": "./bin/pc-control.js"
+  },
+  "scripts": {
+    "start": "node bin/pc-control.js --mode=http",
+    "stdio": "node bin/pc-control.js --mode=stdio"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.18.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
+  }
+}

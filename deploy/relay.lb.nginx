@@ -1,0 +1,67 @@
+# Box1 (AWS 34.200.254.212) front-door LB for mcp.solisk.org.
+# Room-sticky 50/50 split across two relay origins via split_clients:
+# same room code always lands on the same box, so each box's local
+# relay.sqlite stays authoritative for its rooms (no shared DB needed).
+# Local origin = plain HTTP. Box2 origin = https self-signed (verify off).
+# Rollback: /tmp/mcp-relay-direct.bak on box1.
+# NOTE: no automatic failover — if a box dies, flip its split share manually.
+
+# Room code extraction: ?code= query first, /mcp/<code> path second.
+map $uri $mcp_room_path {
+    ~^/mcp/(?<rc>[^/?]+) $rc;
+    default "";
+}
+map $arg_code $mcp_room {
+    default $arg_code;
+    "" $mcp_room_path;
+}
+# Sticky 50/50 split by room: same room always lands on the same relay,
+# so each box's local sqlite stays authoritative for its rooms.
+split_clients "${mcp_room}" $mcp_pool {
+    50% mcp_local;
+    *   mcp_box2;
+}
+map $mcp_pool $mcp_scheme {
+    mcp_local http;
+    default   https;
+}
+upstream mcp_local {
+    server 127.0.0.1:3000 max_fails=2 fail_timeout=10s;
+}
+upstream mcp_box2 {
+    server 137.23.45.53:3443 max_fails=2 fail_timeout=10s;
+}
+server {
+    listen 80;
+    server_name mcp.solisk.org;
+    location /.well-known/acme-challenge/ {
+        root /var/www/mcp-acme;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name mcp.solisk.org;
+    ssl_certificate     /etc/letsencrypt/live/mcp.solisk.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mcp.solisk.org/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    location / {
+        proxy_pass $mcp_scheme://$mcp_pool$request_uri;
+        proxy_ssl_verify off;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+}

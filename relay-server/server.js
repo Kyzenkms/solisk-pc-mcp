@@ -197,7 +197,31 @@ const sseStreams    = new Map();  // sessionId -> res (SSE to web client)
 const sessionPrincipals = new Map(); // sessionId -> authenticated room principal
 const sseEventBuf  = new Map();  // sessionId -> [{ event, data, ts }, ...] (buffer for ChatGPT timing race)
 const codeSession   = new Map();  // code -> sessionId  (cached session per PC for stateless ChatGPT calls)
-const sessionInit   = new Map();  // code -> Promise<sessionId|null> (deduplicates concurrent auto-init)
+  const sessionInit   = new Map();  // code -> Promise<sessionId|null> (deduplicates concurrent auto-init)
+
+  // ── Principal cache ─────────────────────────────────────────────────────────
+  // verifyKey (scrypt, ~47ms CPU) dominated every API-key-authenticated
+  // request. Resolve once per credential+room, then serve from cache.
+  // Hit path is two Map gets: no crypto, no hashing, ~microseconds.
+  // Negative results cache briefly too, so brute-force key guessing cannot
+  // burn CPU (each wrong guess would otherwise cost a full scrypt).
+  // Invalidated centrally in saveState(), which runs on every key / room /
+  // token mutation. OAuth entries additionally clamp to the token expiry.
+  const PRINCIPAL_TTL_MS = 5 * 60 * 1000;
+  const PRINCIPAL_NEG_TTL_MS = 30 * 1000;
+  const PRINCIPAL_MAX = 10000;
+  const principalCache = new Map(); // "code token" -> { principal|null, expires }
+  function principalCacheGet(key) {
+    const e = principalCache.get(key);
+    if (!e) return undefined;
+    if (e.expires < Date.now()) { principalCache.delete(key); return undefined; }
+    return e.principal;
+  }
+  function principalCacheSet(key, principal, ttl) {
+    if (principalCache.size >= PRINCIPAL_MAX) principalCache.clear();
+    principalCache.set(key, { principal, expires: Date.now() + ttl });
+  }
+  function principalCacheBust() { principalCache.clear(); }
 
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 const stateStore = createStateStore(DATA_DIR);
@@ -269,6 +293,9 @@ let tokens = loadState("tokens", TOKENS_FILE, LEGACY_TOKENS_FILE);
 function saveState() {
   try { stateStore.write({ rooms, tokens }); }
   catch (error) { console.error("[relay] Could not persist relay state:", error.message); }
+  // Any persisted mutation may have changed keys, rooms, or tokens —
+  // drop cached auth decisions so the next request re-resolves exactly once.
+  principalCacheBust();
 }
 
 const REQUEST_TIMEOUT = 60_000; // 60s for tool execution
@@ -537,6 +564,26 @@ server.on("upgrade", (request, socket, head) => {
             if (payload && payload.error && payload.error.message && payload.error.message.includes("not initialized")) {
               console.log(`[relay] Session invalidated for ${pending.code}, clearing cache`);
               codeSession.delete(pending.code);
+              // Transparent recovery: the PC-side session died between our
+              // cache check and the forward (PC restart, expiry, eviction).
+              // Mint one fresh session and replay this exact request instead
+              // of surfacing HTTP 400 to the client. Single attempt only.
+              if (!pending._promise && pending.req && pending.res && !pending._retried) {
+                pendingReqs.delete(data.requestId);
+                getOrCreateSession(pending.code, null, "").then((fresh) => {
+                  if (!fresh) {
+                    try { pending.res.status(statusCode).json(payload || { ok: true }); } catch {}
+                    inflightDec(pending.code);
+                    return;
+                  }
+                  console.log(`[relay] Replaying request on fresh session ${fresh} for ${pending.code}`);
+                  _doForward(pending.code, pending.req, pending.res, fresh, { _retried: true });
+                }).catch(() => {
+                  try { pending.res.status(statusCode).json(payload || { ok: true }); } catch {}
+                  inflightDec(pending.code);
+                });
+                return;
+              }
             }
 
             // MCP POST requests MUST always return application/json
@@ -756,11 +803,24 @@ function forwardToPC(code, req, res, extraPayload = {}) {
   const mcpMethod = req.body && req.body.method;
   console.log(`[relay] → ${req.method} ${req.path} session=${incomingSessionId} body_method=${mcpMethod || '-'}`);
 
+  // ── Stale/foreign session fix ──────────────────────────────────────────────
+  // A client-supplied session ID the relay never issued is stale (the PC
+  // restarted and wiped its session map) or belongs to another client.
+  // Forwarding it makes the PC answer "Server not initialized" (HTTP 400),
+  // which strict clients like Claude.ai surface as a failed tool call.
+  // Drop it so the request below takes the auto-init path instead.
+  const cachedSessionId = codeSession.get(code) || null;
+  let effectiveSessionId = incomingSessionId;
+  if (effectiveSessionId && effectiveSessionId !== cachedSessionId) {
+    console.log(`[relay] Dropping unknown session ${effectiveSessionId} for ${code}, will auto-init`);
+    effectiveSessionId = null;
+  }
+
   // ── ChatGPT stateless fix ────────────────────────────────────────────────────
   // ChatGPT sends tools/call (and other methods) with NO mcp-session-id.
   // The PC rejects these with "Server not initialized". We auto-initialize
   // a session for this PC code and inject the session ID into the forwarded request.
-  const needsSession = !incomingSessionId && mcpMethod && mcpMethod !== "initialize";
+  const needsSession = !effectiveSessionId && mcpMethod && mcpMethod !== "initialize";
   if (needsSession) {
     let apiKey = "";
     try { const { config: sc } = require("./lib/security"); apiKey = sc.api_key || ""; } catch {}
@@ -776,14 +836,14 @@ function forwardToPC(code, req, res, extraPayload = {}) {
     return;
   }
 
-  if (incomingSessionId) {
-    const bound = sessionPrincipals.get(incomingSessionId);
+  if (effectiveSessionId) {
+    const bound = sessionPrincipals.get(effectiveSessionId);
     if (bound && (!req.principal || bound.code !== req.principal.code || bound.tokenId !== req.principal.tokenId)) {
       return res.status(401).json({ error: "invalid_session", error_description: "MCP session is bound to a different authenticated principal." });
     }
-    if (req.principal && !bound) sessionPrincipals.set(incomingSessionId, { code: req.principal.code, tokenId: credToken(req), createdAt: Date.now() });
+    if (req.principal && !bound) sessionPrincipals.set(effectiveSessionId, { code: req.principal.code, tokenId: credToken(req), createdAt: Date.now() });
   }
-  _doForward(code, req, res, incomingSessionId, extraPayload);
+  _doForward(code, req, res, effectiveSessionId, extraPayload);
 }
 
 function _doForward(code, req, res, sessionId, extraPayload = {}) {
@@ -816,7 +876,7 @@ function _doForward(code, req, res, sessionId, extraPayload = {}) {
     }
   }, timeoutMs);
 
-  pendingReqs.set(requestId, { res, timer, code, sessionId, principal: req.principal });
+  pendingReqs.set(requestId, { res, req, timer, code, sessionId, principal: req.principal, _retried: !!(extraPayload && extraPayload._retried) });
   inflightInc(code);
 
   // The relay has already authenticated the external client (Claude/ChatGPT).
@@ -885,6 +945,20 @@ function findKeyOwner(token) {
 function resolvePrincipal(req) {
   const token = credToken(req);
   const code = getCode(req);
+  const cacheKey = (code || "*") + " " + (token || "");
+  const hit = principalCacheGet(cacheKey);
+  if (hit !== undefined) return hit;
+  const principal = resolvePrincipalCold(token, code);
+  let ttl = principal === null ? PRINCIPAL_NEG_TTL_MS : PRINCIPAL_TTL_MS;
+  if (principal && token) {
+    const rec = tokens[token];
+    if (rec && rec.expires) ttl = Math.max(0, Math.min(ttl, rec.expires - Date.now()));
+  }
+  principalCacheSet(cacheKey, principal, ttl);
+  return principal;
+}
+
+function resolvePrincipalCold(token, code) {
   if (code) {
     // OAuth access token bound to this room?
     const rec = token ? tokens[token] : null;
@@ -1121,7 +1195,7 @@ const registerHandler = (req, res) => {
   const redirect_uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
   
   // Validate that all redirect_uris point to trusted AI client domains or loopback
-  const trustedDomains = ["claude.ai", "chatgpt.com", "openai.com", "cursor.sh", "cursor.com"];
+  const trustedDomains = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.sh", "cursor.com"];
   for (const uriStr of redirect_uris) {
     try {
       const parsed = new URL(uriStr);
@@ -1178,30 +1252,29 @@ function buildAuthPage(code, query) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Authorize Access — Solisk PC Control MCP</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
+    <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #061011;
-      --bg-deep: #030808;
-      --surface: #0a1718;
-      --surface-2: #102123;
-      --line: #284548;
-      --line-soft: #183033;
-      --text: #edf7f6;
-      --muted: #9bb1b0;
-      --signal: #66e3d3;
+      --bg: #202020;
+      --bg-deep: #171717;
+      --surface: #272727;
+      --surface-2: #2c2c2c;
+      --line: #383838;
+      --line-soft: #333333;
+      --text: #ffffff;
+      --muted: #c9c9c9;
+      --signal: #4fd1b5;
       --signal-dark: #103d3a;
-      --amber: #f0b36a;
-      --danger: #ff8078;
+      --amber: #f0c27a;
+      --danger: #ff8f8f;
     }
     body {
-      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
       background-color: var(--bg);
       background-image:
-        radial-gradient(ellipse at 50% 0%, rgba(102, 227, 211, 0.12) 0%, transparent 65%),
-        linear-gradient(rgba(102, 227, 211, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(102, 227, 211, 0.05) 1px, transparent 1px);
+        radial-gradient(ellipse at 50% 0%, rgba(79, 209, 181, 0.12) 0%, transparent 65%),
+        linear-gradient(rgba(79, 209, 181, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 209, 181, 0.05) 1px, transparent 1px);
       background-size: 100% 100%, 40px 40px, 40px 40px;
       min-height: 100vh;
       display: flex;
@@ -1212,14 +1285,14 @@ function buildAuthPage(code, query) {
       -webkit-font-smoothing: antialiased;
     }
     .card {
-      background: rgba(10, 23, 24, 0.92);
+      background: rgba(39, 39, 39, 0.92);
       backdrop-filter: blur(20px);
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 10px;
       padding: 36px 32px;
       width: 100%;
       max-width: 450px;
-      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 0 1px rgba(102, 227, 211, 0.08);
+      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 0 1px rgba(79, 209, 181, 0.08);
       position: relative;
     }
     .card::before {
@@ -1242,7 +1315,7 @@ function buildAuthPage(code, query) {
       width: 46px;
       height: 46px;
       flex-shrink: 0;
-      background: linear-gradient(135deg, #050B0D 0%, #15272B 100%);
+      background: linear-gradient(135deg, #262626 0%, #333333 100%);
       border: 1px solid var(--line);
       border-radius: 10px;
       display: flex;
@@ -1260,7 +1333,7 @@ function buildAuthPage(code, query) {
     .brand-sub {
       font-size: 11px;
       font-weight: 600;
-      color: var(--signal);
+      color: #4fd1b5;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-top: 3px;
@@ -1276,9 +1349,9 @@ function buildAuthPage(code, query) {
       align-items: center;
       gap: 6px;
       background: var(--signal-dark);
-      border: 1px solid rgba(102, 227, 211, 0.3);
-      color: var(--signal);
-      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid rgba(79, 209, 181, 0.3);
+      color: #03211b;
+      font-family: 'Cascadia Mono', 'Consolas', 'SF Mono', ui-monospace, monospace;
       font-size: 12px;
       font-weight: 600;
       padding: 4px 12px;
@@ -1299,13 +1372,13 @@ function buildAuthPage(code, query) {
       margin-bottom: 20px;
     }
     .pc-name {
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--signal);
+      font-family: 'Cascadia Mono', 'Consolas', 'SF Mono', ui-monospace, monospace;
+      color: #03211b;
       font-weight: 600;
-      background: rgba(102, 227, 211, 0.1);
+      background: rgba(79, 209, 181, 0.1);
       padding: 2px 6px;
       border-radius: 4px;
-      border: 1px solid rgba(102, 227, 211, 0.2);
+      border: 1px solid rgba(79, 209, 181, 0.2);
     }
     .scope-container {
       background: var(--surface-2);
@@ -1322,12 +1395,12 @@ function buildAuthPage(code, query) {
       border-radius: 6px;
       transition: background 0.15s;
     }
-    .scope-row:hover { background: rgba(102, 227, 211, 0.04); }
+    .scope-row:hover { background: rgba(79, 209, 181, 0.04); }
     .scope-icon {
       width: 34px; height: 34px;
-      border-radius: 8px;
-      background: rgba(102, 227, 211, 0.1);
-      border: 1px solid rgba(102, 227, 211, 0.2);
+      border-radius: 6px;
+      background: rgba(79, 209, 181, 0.1);
+      border: 1px solid rgba(79, 209, 181, 0.2);
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
@@ -1335,9 +1408,9 @@ function buildAuthPage(code, query) {
     .scope-title { font-size: 13px; font-weight: 600; color: var(--text); }
     .scope-desc  { font-size: 11px; color: var(--muted); margin-top: 1px; }
     .warning-box {
-      background: rgba(240, 179, 106, 0.08);
-      border: 1px solid rgba(240, 179, 106, 0.25);
-      border-radius: 8px;
+      background: rgba(240, 194, 122, 0.08);
+      border: 1px solid rgba(240, 194, 122, 0.25);
+      border-radius: 6px;
       padding: 12px 14px;
       display: flex;
       gap: 10px;
@@ -1362,37 +1435,37 @@ function buildAuthPage(code, query) {
       padding: 12px 14px;
       background: var(--bg-deep);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 6px;
       color: var(--text);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Mono', 'Consolas', 'SF Mono', ui-monospace, monospace;
       font-size: 13px;
       outline: none;
       transition: all 0.2s;
       margin-bottom: 22px;
     }
     input[type="password"]:focus {
-      border-color: var(--signal);
-      box-shadow: 0 0 0 3px rgba(102, 227, 211, 0.15);
+      border-color: #03211b;
+      box-shadow: 0 0 0 3px rgba(79, 209, 181, 0.15);
     }
-    input[type="password"]::placeholder { color: #435b5c; }
+    input[type="password"]::placeholder { color: #929292; }
     .btns { display: flex; gap: 12px; }
     .btn-allow {
       flex: 1;
       padding: 12px 16px;
-      background: linear-gradient(135deg, #103d3a 0%, #18524d 100%);
-      color: var(--signal);
+      background: #4fd1b5;
+      color: #03211b;
       border: 1px solid var(--signal);
-      border-radius: 8px;
-      font-family: 'IBM Plex Sans', sans-serif;
+      border-radius: 6px;
+      font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
-      box-shadow: 0 4px 16px rgba(102, 227, 211, 0.15);
+      box-shadow: 0 4px 16px rgba(79, 209, 181, 0.15);
     }
     .btn-allow:hover {
-      background: linear-gradient(135deg, #154c48 0%, #1e6661 100%);
-      box-shadow: 0 6px 24px rgba(102, 227, 211, 0.3);
+      background: #66dcbf;
+      box-shadow: 0 6px 24px rgba(79, 209, 181, 0.3);
       transform: translateY(-1px);
     }
     .btn-deny {
@@ -1400,8 +1473,8 @@ function buildAuthPage(code, query) {
       background: transparent;
       color: var(--muted);
       border: 1px solid var(--line);
-      border-radius: 8px;
-      font-family: 'IBM Plex Sans', sans-serif;
+      border-radius: 6px;
+      font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
@@ -1418,7 +1491,7 @@ function buildAuthPage(code, query) {
       border-top: 1px solid var(--line-soft);
       text-align: center;
       font-size: 11px;
-      color: #435b5c;
+      color: #929292;
     }
   </style>
 </head>
@@ -1427,11 +1500,11 @@ function buildAuthPage(code, query) {
   <div class="header">
     <div class="logo-mark">
       <svg viewBox="0 0 512 512" width="28" height="28">
-        <path d="M 176 192 L 152 192 C 143 192 136 199 136 208 V 304 C 136 312 143 320 152 320 H 176" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
-        <path d="M 336 192 L 360 192 C 368 192 376 199 376 208 V 304 C 376 312 368 320 360 320 H 336" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
-        <path d="M 184 224 L 224 256 L 184 288" fill="none" stroke="#64F2D3" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M 244 288 H 280" stroke="#64F2D3" stroke-width="24" stroke-linecap="round"/>
-        <path d="M 288 224 L 328 256 L 288 288" fill="none" stroke="#D1FF91" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 176 192 L 152 192 C 143 192 136 199 136 208 V 304 C 136 312 143 320 152 320 H 176" fill="none" stroke="#4fd1b5" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 336 192 L 360 192 C 368 192 376 199 376 208 V 304 C 376 312 368 320 360 320 H 336" fill="none" stroke="#4fd1b5" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 184 224 L 224 256 L 184 288" fill="none" stroke="#4fd1b5" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 244 288 H 280" stroke="#4fd1b5" stroke-width="24" stroke-linecap="round"/>
+        <path d="M 288 224 L 328 256 L 288 288" fill="none" stroke="#9ede8a" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <div>
@@ -1498,6 +1571,7 @@ function buildAuthPage(code, query) {
 // GET /oauth/authorize or /mcp/:code/oauth/authorize
 const authorizeGetHandler = (req, res) => {
   const code = req.params.code || getCode(req) || "default-pc";
+  console.log(`[oauth/authorize] GET room=${code} client=${String((req.query && req.query.client_id) || "").slice(0, 12)} resource=${String((req.query && req.query.resource) || "").slice(0, 80)}`);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(buildAuthPage(code, req.query));
 };
@@ -1514,6 +1588,7 @@ const authorizePostHandler = (req, res) => {
   const code = req.params.code || getCode(req) || "default-pc";
   const { action, api_key, redirect_uri, state, client_id, code_challenge, code_challenge_method, scope, resource } = req.body || {};
   const targetUri = redirect_uri || "https://claude.ai/api/auth/callback/connector";
+  console.log(`[oauth/authorize] POST room=${code} action=${action} client=${String(client_id || "").slice(0, 12)}`);
 
   if (!client_id || !dynamicClients.has(client_id)) {
     return res.status(400).send("Unknown OAuth client.");
@@ -1582,50 +1657,49 @@ const authorizePostHandler = (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Invalid API Key — Solisk PC Control</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
+    <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'IBM Plex Sans', -apple-system, sans-serif;
-      background: #061011;
+      font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+      background: #202020;
       background-image:
-        radial-gradient(ellipse at 50% 0%, rgba(255, 128, 120, 0.12) 0%, transparent 65%),
-        linear-gradient(rgba(102, 227, 211, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(102, 227, 211, 0.05) 1px, transparent 1px);
+        radial-gradient(ellipse at 50% 0%, rgba(255, 143, 143, 0.12) 0%, transparent 65%),
+        linear-gradient(rgba(79, 209, 181, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 209, 181, 0.05) 1px, transparent 1px);
       background-size: 100% 100%, 40px 40px, 40px 40px;
-      color: #edf7f6;
+      color: #ffffff;
       display: flex; align-items: center; justify-content: center;
       min-height: 100vh; padding: 20px;
     }
     .card {
-      background: rgba(10, 23, 24, 0.94);
-      border: 1px solid rgba(255, 128, 120, 0.35);
-      border-radius: 14px;
+      background: rgba(39, 39, 39, 0.94);
+      border: 1px solid rgba(255, 143, 143, 0.35);
+      border-radius: 10px;
       padding: 36px 32px;
       text-align: center;
       max-width: 440px;
-      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 24px rgba(255, 128, 120, 0.1);
+      box-shadow: 0 24px 64px rgba(3, 8, 8, 0.8), 0 0 24px rgba(255, 143, 143, 0.1);
     }
     .icon {
       width: 52px; height: 52px;
       margin: 0 auto 16px;
       border-radius: 12px;
-      background: rgba(255, 128, 120, 0.1);
-      border: 1px solid rgba(255, 128, 120, 0.3);
+      background: rgba(255, 143, 143, 0.1);
+      border: 1px solid rgba(255, 143, 143, 0.3);
       display: flex; align-items: center; justify-content: center;
     }
-    .icon svg { stroke: #ff8078; width: 26px; height: 26px; }
-    h2 { color: #ff8078; font-size: 20px; font-weight: 700; margin-bottom: 10px; }
-    p { color: #9bb1b0; font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
-    code { font-family: 'JetBrains Mono', monospace; color: #66e3d3; background: rgba(102, 227, 211, 0.1); padding: 2px 6px; border-radius: 4px; }
+    .icon svg { stroke: #ff8f8f; width: 26px; height: 26px; }
+    h2 { color: #ff8f8f; font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    p { color: #c9c9c9; font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
+    code { font-family: 'Cascadia Mono', 'Consolas', 'SF Mono', ui-monospace, monospace; color: #4fd1b5; background: rgba(79, 209, 181, 0.1); padding: 2px 6px; border-radius: 4px; }
     .btn {
       display: inline-block; padding: 12px 24px;
-      background: linear-gradient(135deg, #103d3a 0%, #18524d 100%);
-      color: #66e3d3; text-decoration: none; border-radius: 8px;
-      border: 1px solid #66e3d3; font-weight: 600; font-size: 13px;
+      background: #4fd1b5;
+      color: #03211b; text-decoration: none; border-radius: 6px;
+      border: 1px solid #4fd1b5; font-weight: 600; font-size: 13px;
       transition: all 0.2s;
     }
-    .btn:hover { background: #154c48; box-shadow: 0 4px 16px rgba(102, 227, 211, 0.25); }
+    .btn:hover { background: #66dcbf; color: #03211b; box-shadow: 0 4px 16px rgba(79, 209, 181, 0.25); }
   </style>
 </head>
 <body>

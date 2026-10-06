@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+desktop-app
+website
+_ui-backups
+cutof mhtcet
+*.log
+.DS_Store

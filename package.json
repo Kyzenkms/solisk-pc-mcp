@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "commonjs",
   "bin": {
-    "pc-control-mcp": "./app.js"
+    "pc-control-mcp": "app.js"
   },
   "scripts": {
     "start": "node app.js",
@@ -58,5 +58,16 @@
   "devDependencies": {
     "concurrently": "^10.0.3",
     "pkg": "^5.8.1"
-  }
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kyzenkms/pc-control-mcp-archive.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kyzenkms/pc-control-mcp-archive/issues"
+  },
+  "homepage": "https://github.com/Kyzenkms/pc-control-mcp-archive#readme"
 }

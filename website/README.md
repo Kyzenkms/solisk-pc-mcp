@@ -17,11 +17,11 @@ Then open `http://localhost:4173`.
 - `security.html`: security model and vulnerability reporting
 - `privacy.html`: public-beta privacy policy
 - `terms.html`: public-beta terms of use
+- `404.html`: branded not-found page (served by the static host)
+- `sitemap.xml` / `robots.txt`: SEO for `https://solisk.org/`
 
 ## Deployment
 
-Upload the contents of `website/` to any static host. Configure the public site to serve `index.html` at the root and HTTPS on every page.
-
-The landing page uses a structural skeleton loader with a CSS scan effect. Core content remains visible if JavaScript is disabled or reduced motion is enabled.
+Upload the contents of `website/` to any static host. Configure the public site to serve `index.html` at the root and HTTPS on every page. No build step, no JavaScript framework — content renders instantly with JS disabled.
 
 Before production launch, have qualified counsel review `privacy.html` and `terms.html` for the operator's jurisdiction and actual infrastructure practices.

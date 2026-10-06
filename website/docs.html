@@ -8,6 +8,15 @@
       content="Install, connect, secure, and self-host PC Control MCP."
     />
     <title>Documentation | PC Control MCP</title>
+    <meta name="theme-color" content="#030808" />
+    <meta property="og:title" content="Documentation | PC Control MCP" />
+    <meta
+      property="og:description"
+      content="Install, connect, secure, and self-host PC Control MCP."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://solisk.org/docs.html" />
+    <link rel="canonical" href="https://solisk.org/docs.html" />
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <script defer src="app.js"></script>
@@ -42,7 +51,7 @@
     <main id="main" class="page-shell">
       <header class="docs-hero">
         <div class="container">
-          <div class="eyebrow">Documentation / 1.0.0-beta</div>
+          <div class="eyebrow">Documentation / 1.0.0</div>
           <h1>From install to first tool call.</h1>
           <p>
             Practical setup for hosted, local, and self-hosted operation. Start
@@ -64,7 +73,7 @@
             <h2>Install on Windows</h2>
             <ol>
               <li>Download the latest beta installer from GitHub Releases.</li>
-              <li>Run <code>PC Control MCP Setup 1.0.0-beta.exe</code>.</li>
+              <li>Run <code>PC Control MCP Setup 1.0.0.exe</code>.</li>
               <li>
                 Windows SmartScreen may warn because the beta installer is
                 unsigned. Verify the release checksum before continuing.
@@ -84,9 +93,9 @@
             <table>
               <thead>
                 <tr>
-                  <th>Mode</th>
-                  <th>Use when</th>
-                  <th>Address</th>
+                  <th scope="col">Mode</th>
+                  <th scope="col">Use when</th>
+                  <th scope="col">Address</th>
                 </tr>
               </thead>
               <tbody>
@@ -133,6 +142,29 @@
     }
   }
 }</code></pre>
+            <h3>Claude</h3>
+            <p>
+              Settings &rarr; Connectors &rarr; Add custom connector. Paste
+              your MCP URL
+              (<code>https://mcp.solisk.org/mcp/your-device-id</code>),
+              complete the browser sign-in, and approve with an owner or
+              scoped API key when prompted. Tools appear in chat once the
+              connector shows Connected.
+            </p>
+            <h3>ChatGPT</h3>
+            <p>
+              In developer settings, create a connector with your MCP URL.
+              Supply the bearer API key when asked. ChatGPT discovers tools
+              via <code>tools/list</code> on first use.
+            </p>
+            <h3>Cursor</h3>
+            <p>
+              Settings &rarr; MCP &rarr; add a server with
+              <code>type: url</code>, your MCP URL, and an
+              <code>Authorization: Bearer</code> header carrying your API
+              key. Local-only setups use
+              <code>http://localhost:3000/mcp</code> with no relay.
+            </p>
             <p>
               Never paste the owner key into public issues, screenshots,
               repositories, or shared chat transcripts. Create a scoped key for

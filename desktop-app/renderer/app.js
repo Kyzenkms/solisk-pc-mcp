@@ -36,6 +36,107 @@ const CATS = [
 const TOOL_TOTAL = CATS.reduce((total, category) => total + category.tools.length, 0);
 ST.toolCount = TOOL_TOTAL;
 
+// ── One-line tool descriptions (info dot tooltips) ──────────────────────────
+const TOOL_DESC = {
+  read_file: 'Read any text file into the conversation.',
+  write_file: 'Create or overwrite a file with new content.',
+  append_file: 'Add content to the end of a file.',
+  delete_file: 'Permanently delete a file.',
+  list_dir: 'List files and folders in a directory.',
+  move_file: 'Move or rename a file or folder.',
+  copy_file: 'Duplicate a file or folder.',
+  file_exists: 'Check whether a path exists.',
+  get_file_info: 'Show file size, dates, and attributes.',
+  search_files: 'Find files by name pattern.',
+  read_json: 'Read and parse a JSON file.',
+  write_json: 'Write data out as a JSON file.',
+  get_folder_size: 'Measure total size of a folder.',
+  patch_file: 'Apply a small targeted edit to a file.',
+  grep_files: 'Search text inside files across folders.',
+  edit_file: 'Edit a file with find-and-replace rules.',
+  str_replace: 'Replace one exact text block in a file.',
+  replace_file_content: 'Rewrite matched content inside a file.',
+  grep: 'Fast text search across file contents.',
+  hash_file: 'Compute a file checksum (SHA-256).',
+  run_command: 'Run a shell command and return output.',
+  run_command_background: 'Start a long command without waiting.',
+  get_env: 'Read an environment variable value.',
+  set_env: 'Set an environment variable value.',
+  get_system_info: 'Show OS, CPU, memory, and disk summary.',
+  list_processes: 'List currently running programs.',
+  kill_process: 'Force-stop a running program.',
+  take_screenshot: 'Capture the current screen as an image.',
+  get_clipboard: 'Read text currently on the clipboard.',
+  set_clipboard: 'Copy text to the clipboard.',
+  open_url: 'Open a web link in the default browser.',
+  open_file: 'Open a file with its default app.',
+  read_screen_text: 'Extract readable text from the screen.',
+  http_get: 'Fetch content from a web URL.',
+  http_post: 'Send data to a web URL.',
+  web_search: 'Search the web and return results.',
+  ping_host: 'Check if a host answers on the network.',
+  get_public_ip: 'Show this PC public internet address.',
+  get_local_ip: 'Show this PC local network address.',
+  list_network_connections: 'Show active network connections.',
+  dns_lookup: 'Resolve a domain name to IP addresses.',
+  list_wifi_networks: 'Show nearby Wi-Fi networks.',
+  get_wifi_password: 'Reveal a saved Wi-Fi password.',
+  serve_directory: 'Host a folder as a local website.',
+  stop_server: 'Stop a locally hosted folder or port.',
+  expose_port: 'Make a local port reachable.',
+  download_file: 'Download a file from a URL.',
+  check_port: 'Test whether a local port is open.',
+  mouse_click: 'Click at a screen position.',
+  mouse_move: 'Move the pointer to a screen position.',
+  mouse_double_click: 'Double-click at a screen position.',
+  keyboard_type: 'Type text as keystrokes.',
+  key_press: 'Press a single key or shortcut.',
+  list_windows: 'List open application windows.',
+  focus_window: 'Bring a window to the front.',
+  get_active_window: 'Show which window is currently focused.',
+  close_window: 'Close an application window.',
+  get_mouse_position: 'Report current pointer coordinates.',
+  show_notification: 'Pop a Windows toast notification.',
+  show_dialog: 'Show a message dialog on screen.',
+  speak_text: 'Read text aloud with text-to-speech.',
+  play_sound: 'Play an audio file.',
+  set_volume: 'Change system audio volume.',
+  get_volume: 'Read current system audio volume.',
+  memory_set: 'Save a fact for AI to remember.',
+  memory_get: 'Recall a saved fact by key.',
+  memory_list: 'List everything AI currently remembers.',
+  memory_delete: 'Forget one saved fact.',
+  memory_clear: 'Erase all saved AI memory.',
+  memory_append: 'Add to an existing saved memory.',
+  git_status: 'Show changed and untracked Git files.',
+  git_clone: 'Download a Git repository locally.',
+  git_add: 'Stage files for the next commit.',
+  git_commit: 'Save staged changes with a message.',
+  git_push: 'Upload commits to the remote repo.',
+  git_pull: 'Download and merge remote changes.',
+  git_log: 'Show recent commit history.',
+  git_diff: 'Show unstaged file changes.',
+  git_branch: 'List or switch Git branches.',
+  git_init: 'Start a new Git repository.',
+  list_installed_apps: 'List programs installed on this PC.',
+  get_battery_status: 'Show battery level and charging state.',
+  get_disk_usage: 'Show free and used space per drive.',
+  get_startup_programs: 'List apps that launch at startup.',
+  run_as_admin: 'Relaunch a command with admin rights.',
+  schedule_task: 'Create a Windows scheduled task.',
+  take_screenshot_region: 'Capture only part of the screen.',
+  get_screen_resolution: 'Show display size and scaling.',
+  empty_recycle_bin: 'Permanently empty the Recycle Bin.',
+  lock_screen: 'Lock Windows immediately.',
+  shutdown: 'Shut down or restart this PC.',
+  encode_base64: 'Encode text to Base64.',
+  decode_base64: 'Decode Base64 back to text.',
+  generate_uuid: 'Create a random unique identifier.',
+  hash_text: 'Checksum any text (SHA-256).',
+  format_json: 'Pretty-print compact JSON.',
+  timestamp_now: 'Return the current date and time.',
+};
+
 // ── Tool state ────────────────────────────────────────────────────────────────
 let toolState = {};
 let toolSaveQueue = Promise.resolve();
@@ -76,10 +177,10 @@ const clip = async t => {
   return false;
 };
 
-function applyTheme(theme) {
+function applyTheme(theme, persist = false) {
   const normalized = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = normalized;
-  localStorage.setItem('theme', normalized);
+  if (persist) localStorage.setItem('theme', normalized);
   const toggle = $('themeToggle');
   if (toggle) {
     const next = normalized === 'dark' ? 'light' : 'dark';
@@ -88,7 +189,20 @@ function applyTheme(theme) {
   }
 }
 
-applyTheme(localStorage.getItem('theme') || 'dark');
+// Theme: an explicit user choice wins and persists; otherwise follow the OS
+// light/dark setting and react live when the OS switches.
+const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+function resolveTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light' || saved === 'dark') return saved;
+  return themeMedia.matches ? 'dark' : 'light';
+}
+applyTheme(resolveTheme());
+if (themeMedia.addEventListener) {
+  themeMedia.addEventListener('change', () => {
+    if (!localStorage.getItem('theme')) applyTheme(resolveTheme());
+  });
+}
 
 function randomHex(bytes) {
   const values = new Uint8Array(bytes);
@@ -244,8 +358,10 @@ document.querySelectorAll('.nav-button').forEach(btn => {
     page?.scrollTo({ top: 0, behavior: 'instant' });
     page?.querySelector('h1')?.focus({ preventScroll: true });
     if (pg === 'connect')  renderConnect();
+    if (pg === 'setup')    renderSetup();
     if (pg === 'tools')    renderTools();
     if (pg === 'logs')     renderLogs();
+    if (pg === 'health')   refreshHealth();
     if (pg === 'keys')     loadSettings();
     if (pg === 'settings') loadSettings();
   };
@@ -260,7 +376,7 @@ $('btnMin')  ?.addEventListener('click', () => window.mcp?.minimize());
 $('btnMax')  ?.addEventListener('click', () => window.mcp?.maximize());
 $('btnClose')?.addEventListener('click', () => window.mcp?.close());
 $('themeToggle')?.addEventListener('click', () => {
-  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', true);
 });
 
 // ── Apply status ──────────────────────────────────────────────────────────────
@@ -324,7 +440,7 @@ function applyStatus(s) {
       if (btnRetry) btnRetry.style.display = 'none';
     }
     else if (ST.relayError && ST.tunnelUrl) {
-      epRelay.textContent = 'Hosted relay unavailable — secure tunnel ready';
+      epRelay.textContent = 'Hosted relay unavailable — Cloudflare tunnel ready';
       epRelay.classList.remove('live');
       $('relayState')?.replaceChildren(document.createTextNode('Fallback'));
       if (btnRetry) btnRetry.style.display = 'inline-block';
@@ -347,10 +463,22 @@ function applyStatus(s) {
     else              { epTunnel.textContent = on ? 'Waiting for tunnel…' : 'Not connected'; epTunnel.classList.remove('live'); $('tunnelState')?.replaceChildren(document.createTextNode(on ? 'Waiting' : 'Offline')); }
   }
   if (epLocal) epLocal.textContent = `http://localhost:${ST.serverPort || 3000}/mcp`;
+  const epDash = $('epDash');
+  if (epDash) epDash.textContent = `http://localhost:${ST.serverPort || 3000}/app`;
 
   // Refresh connect page content if it's visible
   if (document.querySelector('#pg-connect.on')) renderConnect();
+  // Refresh setup page content if it's visible
+  if (document.querySelector('#pg-setup.on')) renderSetup();
 }
+
+let lastTunRefresh = 0;
+const _applyStatus = applyStatus;
+applyStatus = function(s) {
+  _applyStatus(s);
+  const now = Date.now();
+  if (now - lastTunRefresh > 10000) { lastTunRefresh = now; refreshTunnel(); }
+};
 
 window.retryRelayConn = async function() {
   toast('Retrying relay connection…');
@@ -366,6 +494,10 @@ window.retryRelayConn = async function() {
 // ── Server toggle ─────────────────────────────────────────────────────────────
 async function toggleServer() {
   if (serverActionPending || !window.mcp) return;
+  if (document.body.classList.contains("is-bridge")) {
+    toast("The server runs on the host — start/stop it there, not from the browser.", "e");
+    return;
+  }
   serverActionPending = true;
   setServerControlsBusy(true);
   try {
@@ -382,15 +514,16 @@ function setServerControlsBusy(busy) {
   [$('pwrBtn'), $('btnToggle'), $('srvBtn')].forEach(el => {
     if (!el) return;
     el.toggleAttribute('disabled', busy);
+    if (el.id === 'srvBtn') el.setAttribute('aria-disabled', String(busy));
     el.setAttribute('aria-busy', String(busy));
   });
   if ($('btnToggle')) $('btnToggle').textContent = busy ? (ST.running ? 'Stopping…' : 'Starting…') : (ST.running ? 'Stop server' : 'Start server');
 }
 $('pwrBtn')   ?.addEventListener('click', toggleServer);
 $('btnToggle')?.addEventListener('click', toggleServer);
-$('srvBtn')   ?.addEventListener('click', toggleServer);
+$('srvBtn')   ?.addEventListener('click', () => { if ($('srvBtn')?.getAttribute('aria-disabled') === 'true') return; toggleServer(); });
 $('srvBtn')?.addEventListener('keydown', event => {
-  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleServer(); }
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if ($('srvBtn')?.getAttribute('aria-disabled') === 'true') return; toggleServer(); }
 });
 
 // ── Endpoint copy ─────────────────────────────────────────────────────────────
@@ -398,7 +531,7 @@ $('btnCpRelay')  ?.addEventListener('click', async () => {
   const url = ST.relayUrl || (ST.tunnelUrl ? ST.tunnelUrl + '/mcp' : null);
   if (!url) { toast(ST.relayError || 'Relay not connected yet', 'e'); return; }
   const ok = await clip(url);
-  if (ok) toast(ST.relayUrl ? 'MCP URL copied!' : 'Hosted relay unavailable. Secure tunnel URL copied.', 's');
+  if (ok) toast(ST.relayUrl ? 'MCP URL copied!' : 'Hosted relay unavailable. Cloudflare tunnel URL copied.', 's');
 });
 $('btnCpTunnel') ?.addEventListener('click', async () => {
   if (!ST.tunnelUrl) { toast('Tunnel not connected yet', 'e'); return; }
@@ -408,6 +541,16 @@ $('btnCpTunnel') ?.addEventListener('click', async () => {
 $('btnCpLocal')  ?.addEventListener('click', async () => {
   const ok = await clip(`http://localhost:${ST.serverPort || 3000}/mcp`);
   if (ok) toast('Local URL copied!', 's');
+});
+$('btnCpDash')   ?.addEventListener('click', async () => {
+  const ok = await clip(`http://localhost:${ST.serverPort || 3000}/app`);
+  if (ok) toast('Dashboard URL copied!', 's');
+});
+$('btnOpenDash')  ?.addEventListener('click', async () => {
+  if (!ST.running) { toast('Start the server first', 'e'); return; }
+  if (!dashOn) { toast('Dashboard is off — flip its switch first', 'e'); return; }
+  try { await window.mcp?.openUrl(`http://localhost:${ST.serverPort || 3000}/app`); }
+  catch { toast('Could not open dashboard', 'e'); }
 });
 
 // ── Delegated bindings (CSP `script-src 'self'` blocks inline handlers) ───────
@@ -436,6 +579,7 @@ document.addEventListener('click', e => {
   const setCatBtn = e.target.closest('[data-setcat]');
   if (setCatBtn) { setCat(setCatBtn.dataset.setcat, setCatBtn.dataset.enable === '1'); return; }
   const tool = e.target.closest('[data-tool]');
+  if (tool && e.target.closest('[data-tinfo]')) return; // info dot: tooltip only, never toggles
   if (tool) { toggleTool(tool.dataset.tool, tool.dataset.cat); return; }
   const catHd = e.target.closest('.tcat-hd[data-cat]');
   if (catHd && !e.target.closest('[data-stop]')) { toggleCat(catHd.dataset.cat); return; }
@@ -450,7 +594,7 @@ window.toggleCC = function(id) {
   const card = $(id);
   if (!card) return;
   const wasOpen = card.classList.contains('open');
-  document.querySelectorAll('.ccard').forEach(c => c.classList.remove('open'));
+  document.querySelectorAll('.connect-card').forEach(c => c.classList.remove('open'));
   if (!wasOpen) card.classList.add('open');
 };
 
@@ -510,6 +654,28 @@ async function renderConnect() {
 // ── Tools ─────────────────────────────────────────────────────────────────────
 let toolQ = '';
 
+// Single floating tooltip for info dots. It lives on <body> so category
+// cards with overflow:hidden can never clip it.
+const toolTip = document.createElement('div');
+toolTip.className = 'tinfo-tip';
+toolTip.setAttribute('role', 'tooltip');
+document.body.appendChild(toolTip);
+let toolTipFor = null;
+document.addEventListener('mouseover', e => {
+  const dot = e.target.closest ? e.target.closest('[data-tinfo]') : null;
+  if (!dot) { toolTip.classList.remove('show'); toolTipFor = null; return; }
+  if (toolTipFor === dot && toolTip.classList.contains('show')) return;
+  toolTipFor = dot;
+  toolTip.textContent = dot.getAttribute('data-tip') || '';
+  toolTip.classList.add('show');
+  const r = dot.getBoundingClientRect();
+  const tw = toolTip.offsetWidth || 200, th = toolTip.offsetHeight || 40;
+  const x = Math.min(Math.max(8, r.right - tw), window.innerWidth - tw - 8);
+  let y = r.bottom + 8;
+  if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 8);
+  toolTip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+});
+
 function updateToolBadge() {
   const n = Object.values(toolState).filter(Boolean).length;
   const chip = $('toolChip');
@@ -543,6 +709,7 @@ function renderTools() {
             <div class="ttag ${toolState[t] ? '' : 'off'}" data-tool="${t}" data-cat="${cat.id}">
               <div class="mpill"><div class="mpill-t"><div class="mpill-h"></div></div></div>
               <span class="tnm">${t}</span>
+              <span class="tinfo" data-tinfo data-tip="${esc(TOOL_DESC[t] || 'AI capability.')}">i</span>
             </div>`).join('')}
         </div>
       </div>
@@ -655,9 +822,10 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
     $('modal-newkey')?.classList.remove('show');
     $('modal-regenerate-url')?.classList.remove('show');
+    if ($('modal-tunnel')?.classList.contains('show')) wizClose();
     if ($('modal-shell')?.classList.contains('show')) $('btnDeny')?.click();
   }
-  if (event.ctrlKey && event.key >= '1' && event.key <= '6') {
+  if (event.ctrlKey && event.key >= '1' && event.key <= '8') {
     event.preventDefault();
     document.querySelectorAll('.nav-button')[Number(event.key) - 1]?.click();
   }
@@ -673,6 +841,7 @@ function updateKeyDisplay() {
   if (!_apiKeyRaw) {
     kd.textContent = '••••••••••••••••';
     kd.title = 'No API key set';
+    kd.classList.remove('full');
     return;
   }
   if (_keyVisible) {
@@ -684,6 +853,7 @@ function updateKeyDisplay() {
     kd.title = 'Click to copy full API key';
     if (tb) tb.textContent = 'Show';
   }
+  kd.classList.toggle('full', _keyVisible);
 }
 
 window.updateUrlPreview = function() {
@@ -718,6 +888,8 @@ async function loadSettings() {
   permModeChanged();
   const as = $('sAutostart');
   if (as) as.checked = cfg.autostart !== false;
+  const sd = $('sDash');
+  if (sd) sd.checked = cfg.dashboard_enabled !== false;
   _apiKeyRaw = cfg.api_key || '';
   if (Array.isArray(cfg.disabled_tools)) {
     CATS.forEach(c => c.tools.forEach(t => { toolState[t] = !cfg.disabled_tools.includes(t); }));
@@ -749,6 +921,12 @@ window.permModeChanged = function() {
 
 window.dashPermModeChanged = async function() {
   const m = $('sPermModeDash')?.value || 'always';
+  if (m === "turbo" && !confirm("Turbo runs every AI command with NO approval prompts. Enable?")) {
+    const sEl = $('sPermModeDash');
+    if (sEl) sEl.value = "always";
+    permModeChanged();
+    return;
+  }
   const sEl = $('sPermMode');
   if (sEl) sEl.value = m;
   permModeChanged();
@@ -958,6 +1136,278 @@ $('btnNewKeyCreate')?.addEventListener('click', async () => {
   }
 });
 
+// ── Tunnel + tailnet (Connect page, Overview switches) ──────────────────────
+let lastTunMode = "quick";
+let tunRefreshing = false;
+let dashOn = true;
+let lastTun = null;
+
+function renderSetup() {
+  const set = (stateId, urlId, state, url, live) => {
+    const s = $(stateId), u = $(urlId);
+    if (s) { s.textContent = state; s.classList.toggle("live", !!live); }
+    if (u) { u.textContent = url; u.classList.toggle("live", !!live); }
+  };
+  const syncSwitch = (id, on) => {
+    const sw = $(id);
+    if (sw && document.activeElement !== sw) sw.checked = !!on;
+  };
+  const relayOn = ST.relayOn !== false;
+  syncSwitch("suRelaySwitch", relayOn && ST.running);
+  const relayLive = relayOn && !!(ST.relayUrl || (ST.running && !ST.relayError));
+  set("suRelayState", "suRelayUrl",
+    !ST.running ? "Offline" : !relayOn ? "Off" : ST.relayUrl ? "Live" : ST.relayError ? "Unavailable" : "Connecting",
+    !relayOn ? "Relay off — switch on to reconnect" : ST.relayUrl || (!ST.running ? "—" : "Waiting for relay…"), relayLive);
+  const rSub = $("suRelaySub");
+  if (rSub) rSub.textContent = !relayOn ? "Direct-only until re-enabled" : "Managed host · always-on room";
+  const t = lastTun;
+  const tunUrl = (t && t.state && t.state.url) || (ST.tunnelUrl ? ST.tunnelUrl + "/mcp" : "");
+  const tunActive = t && t.mode !== "off";
+  syncSwitch("suTunSwitch", tunActive);
+  set("suTunState", "suTunUrl",
+    !t ? "Unknown" : t.mode === "off" ? "Off" : tunUrl ? "Live" : "Starting",
+    tunUrl || (t && t.mode === "custom" && t.hostname ? `https://${t.hostname} (starting…)` : "—"), !!tunUrl);
+  const tSub = $("suTunSub");
+  if (tSub) tSub.textContent = !t || t.mode === "off" ? "Direct pipe · switch on to expose" : t.mode === "custom" ? `Custom domain · ${t.hostname || "wizard pending"}` : "Quick tunnel · address rotates on restart";
+  const tsUrl = (t && t.tailscale && (t.tailscale.url || (t.tailscale.loggedIn && `https://${t.tailscale.dns}`))) || "";
+  syncSwitch("suTsSwitch", !!tsUrl);
+  set("suTsState", "suTsUrl", !t ? "Unknown" : tsUrl ? "Live" : "Off", tsUrl || "—", !!tsUrl);
+  const dashUrl = `http://localhost:${ST.serverPort || 3000}/app`;
+  const dashLive = ST.running && dashOn;
+  syncSwitch("suDashSwitch", dashLive);
+  set("suDashState", "suDashUrl", !ST.running ? "Offline" : dashOn ? "Local" : "Off", ST.running ? dashUrl : "—", dashLive);
+  const dSub = $("suDashSub");
+  if (dSub) dSub.textContent = dashOn ? "Browser view · key-locked" : "Fully off · /app and /dashboard return 404";
+}
+
+async function refreshTunnel() {
+  if (tunRefreshing) return;
+  tunRefreshing = true;
+  try {
+    let t = null;
+    try { t = await window.mcp?.tunnelState(); } catch { return; }
+    if (!t) return;
+    lastTun = t;
+    lastTunMode = t.mode && t.mode !== "off" ? t.mode : lastTunMode;
+    dashOn = t.dashboard !== false;
+  const line = $('tunModeLine');
+  if (line) {
+    if (t.mode === "off") line.textContent = "Off — nothing exposed.";
+    else if (t.mode === "custom") line.textContent = (t.hostname ? `https://${t.hostname}` : "Custom") + (t.hasToken ? "" : " — token missing, run the wizard.");
+    else line.textContent = t.state && t.state.url ? "Quick tunnel" : "Quick tunnel";
+  }
+  ["tunModeOff", "tunModeQuick", "tunModeCustom"].forEach((id, i) => {
+    const b = $(id);
+    if (b) b.classList.toggle("on", ["off", "quick", "custom"][i] === t.mode);
+  });
+  const sw = $('tunSwitch');
+  if (sw) { sw.disabled = false; if (document.activeElement !== sw) sw.checked = t.mode !== "off"; }
+  const ts = $('tsState'), tl = $('tsStatusLine'), tsub = $('tsSub');
+  const tsLive = t.tailscale && t.tailscale.ok && t.tailscale.loggedIn;
+  if (ts) ts.textContent = !t.tailscale || !t.tailscale.ok ? "Missing" : tsLive ? "Live" : "Paused";
+  if (tl) tl.textContent = tsLive && t.tailscale.url ? t.tailscale.url : tsLive ? `https://${t.tailscale.dns}` : (!t.tailscale || !t.tailscale.ok ? "Tailscale not installed." : "Not serving — hit Serve.");
+  if (tsub) tsub.textContent = !t.tailscale || !t.tailscale.ok ? "Tailnet inbound" : tsLive ? "Serving tailnet" : "Installed, idle";
+  const ds = $('dashSwitch');
+  if (ds && document.activeElement !== ds) ds.checked = dashOn;
+  const dbs = $('dashState');
+  if (dbs) { dbs.textContent = dashOn ? "Local" : "Off"; dbs.classList.toggle("live", dashOn); }
+  const epd = $('epDash');
+  if (epd) epd.classList.toggle("live", dashOn && ST.running);
+  if (document.querySelector('#pg-setup.on')) renderSetup();
+  } finally { tunRefreshing = false; }
+}
+
+async function setTunMode(mode) {
+  try {
+    const r = await window.mcp?.tunnelSetMode(mode);
+    if (r && r.ok) { toast(mode === "off" ? "Tunnel off" : `Tunnel ${mode} — ${r.applied ? "applied live" : "applies on start"}`, 's'); }
+    else toast((r && r.error) || "Tunnel switch failed", 'e');
+  } catch { toast("Tunnel switch failed", 'e'); }
+  refreshTunnel();
+}
+
+$('tunModeOff')?.addEventListener('click', () => setTunMode('off'));
+$('tunModeQuick')?.addEventListener('click', () => setTunMode('quick'));
+$('tunModeCustom')?.addEventListener('click', () => setTunMode('custom'));
+$('tunSwitch')?.addEventListener('change', e => setTunMode(e.target.checked ? lastTunMode : 'off'));
+$('tsServe')?.addEventListener('click', async () => { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); refreshTunnel(); });
+$('tsFunnel')?.addEventListener('click', async () => {
+  if (!confirm("Funnel publishes this PC to the public internet. Continue?")) return;
+  await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); refreshTunnel();
+});
+$('tsOff')?.addEventListener('click', async () => { await window.mcp?.tailscaleOff(); refreshTunnel(); });
+$('dashSwitch')?.addEventListener('change', async e => {
+  await window.mcp?.dashSet(e.target.checked);
+  toast(e.target.checked ? "Dashboard on" : "Dashboard off", 's');
+});
+$('sDash')?.addEventListener('change', async e => {
+  await window.mcp?.dashSet(e.target.checked);
+  toast("Saved", 's');
+  refreshTunnel();
+});
+
+// ── Setup-tab toggles + actions (mirror the Overview controls) ──────────────
+$('suRelaySwitch')?.addEventListener('change', async e => {
+  const on = e.target.checked;
+  try {
+    await window.mcp?.relaySet(on);
+    toast(on ? "Relay on — dialing" : "Relay off — direct-only", 's');
+  } catch { toast("Relay toggle failed", 'e'); e.target.checked = !on; }
+  if (document.querySelector('#pg-setup.on')) renderSetup();
+});
+$('suTunSwitch')?.addEventListener('change', e => setTunMode(e.target.checked ? lastTunMode : 'off'));
+$('suTsSwitch')?.addEventListener('change', async e => {
+  if (e.target.checked) { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); }
+  else { await window.mcp?.tailscaleOff(); toast('Tailnet serve stopped', 's'); }
+  refreshTunnel();
+});
+$('suDashSwitch')?.addEventListener('change', async e => {
+  await window.mcp?.dashSet(e.target.checked);
+  toast(e.target.checked ? "Dashboard on" : "Dashboard off — /app and /dashboard return 404", 's');
+  refreshTunnel();
+});
+$('btnSuRetry')?.addEventListener('click', retryRelayConn);
+$('btnSuWizard')?.addEventListener('click', () => wizOpen());
+$('btnSuFunnel')?.addEventListener('click', async () => {
+  if (!confirm("Funnel publishes this PC to the public internet. Continue?")) return;
+  await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); refreshTunnel();
+});
+$('btnChoiceQuick')?.addEventListener('click', () => setTunMode('quick'));
+$('btnChoiceCustom')?.addEventListener('click', () => wizOpen());
+$('btnSuOpenDash')?.addEventListener('click', async () => {
+  if (!ST.running) { toast('Start the server first', 'e'); return; }
+  if (!dashOn) { toast('Dashboard is off — flip its switch first', 'e'); return; }
+  try { await window.mcp?.openUrl(`http://localhost:${ST.serverPort || 3000}/app`); }
+  catch { toast('Could not open dashboard', 'e'); }
+});
+
+// ── Custom-domain wizard ────────────────────────────────────────────────────
+let wizStep = 0, wizTimer = null;
+
+function wizShow(html) { const b = $('tunWizBody'); if (b) b.innerHTML = html; }
+function wizOpen() {
+  wizStep = 0;
+  $('modal-tunnel')?.classList.add('show');
+  wizRender();
+  setTimeout(() => $('btnTunWizNext')?.focus(), 50);
+}
+function wizClose() {
+  $('modal-tunnel')?.classList.remove('show');
+  if (wizTimer) { clearInterval(wizTimer); wizTimer = null; }
+}
+
+async function wizRender() {
+  const next = $('btnTunWizNext');
+  if (next) { next.disabled = false; next.textContent = "Next"; }
+  if (wizStep === 0) {
+    let t = null;
+    try { t = await window.mcp?.tunnelState(); } catch {}
+    if (!t) { wizShow("Could not reach the backend."); if (next) next.style.display = "none"; return; }
+    if (next) next.style.display = "";
+    if (!t.cfInstalled) {
+      wizShow(`<div class="step"><span class="step-n">1</span><span class="step-t">Install the Cloudflare connector (one click, winget).</span></div><div class="ccard-foot"><button class="button primary" id="wizInstall">Install cloudflared</button></div>`);
+      $('wizInstall')?.addEventListener('click', async () => {
+        toast('Installing — this takes a minute…');
+        const r = await window.mcp?.tunnelInstall();
+        if (r && r.ok) { wizStep = 1; wizRender(); } else toast((r && (r.hint || r.error)) || "Install failed", 'e');
+      });
+      if (next) next.style.display = "none";
+    } else if (!t.loginDone) { wizStep = 1; wizRender(); }
+    else if (!t.hasToken) { wizStep = 3; wizRender(); }
+    else { wizStep = 4; wizRender(); }
+  } else if (wizStep === 1) {
+    if (next) next.style.display = "";
+    wizShow(`<div class="step"><span class="step-n">2</span><span class="step-t">Log in — a Cloudflare page opens. Pick your domain, click through, come back here.</span></div><div class="ccard-foot"><button class="button primary" id="wizLogin">Open Cloudflare login</button></div><div class="step"><span class="step-t" id="wizLoginWait">Waiting…</span></div>`);
+    $('wizLogin')?.addEventListener('click', async () => {
+      await window.mcp?.tunnelLogin();
+      let n = 0;
+      if (wizTimer) clearInterval(wizTimer);
+      wizTimer = setInterval(async () => {
+        n++;
+        let t = null;
+        try { t = await window.mcp?.tunnelState(); } catch {}
+        if (t && t.loginDone) { clearInterval(wizTimer); wizTimer = null; wizStep = 2; wizRender(); }
+        else if (n > 120) { clearInterval(wizTimer); wizTimer = null; const w = $('wizLoginWait'); if (w) w.textContent = "Still waiting — finish the browser step, then press Next."; }
+      }, 3000);
+    });
+  } else if (wizStep === 2) {
+    wizShow(`<div class="step"><span class="step-n">3</span><span class="step-t">Logged in. Create the tunnel (reuses it if it exists).</span></div>`);
+    if (next) { next.disabled = true; next.textContent = "Creating…"; }
+    const r = await window.mcp?.tunnelCreate("pc-control");
+    if (r && r.ok) { wizStep = 3; wizRender(); }
+    else { wizShow(`Setup stopped: ${esc((r && r.error) || "create failed")}. Press Next to retry.`); }
+  } else if (wizStep === 3) {
+    wizShow(`<div class="step"><span class="step-n">4</span><span class="step-t">Which address should reach this PC?</span></div><div class="sr"><input class="inp" id="wizHost" placeholder="mcp.yourdomain.com"></div>`);
+  } else {
+    wizShow(`<div class="step"><span class="step-n">✓</span><span class="step-t">Custom domain live. Flip Tunnel mode to Custom domain to use it.</span></div><div class="ccard-foot"><button class="button primary" id="wizUse">Use custom domain now</button><button class="button" id="wizForget">Forget token</button></div>`);
+    if (next) next.style.display = "none";
+    $('wizUse')?.addEventListener('click', async () => { await window.mcp?.tunnelSetMode("custom"); wizClose(); refreshTunnel(); toast("Custom tunnel active", 's'); });
+    $('wizForget')?.addEventListener('click', async () => { await window.mcp?.tunnelForget(); wizClose(); refreshTunnel(); });
+  }
+}
+
+$('btnTunWizard')?.addEventListener('click', wizOpen);
+$('btnTunWizCancel')?.addEventListener('click', wizClose);
+$('btnTunWizNext')?.addEventListener('click', async () => {
+  if (wizStep === 1) { toast("Use the login button above first", 'e'); return; }
+  if (wizStep === 2) { wizRender(); return; }
+  if (wizStep === 3) {
+    const host = ($('wizHost')?.value || "").trim().toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/i.test(host) || host.includes("..")) { toast("Bare hostname only", 'e'); return; }
+    const next = $('btnTunWizNext');
+    if (next) { next.disabled = true; next.textContent = "Routing…"; }
+    const r = await window.mcp?.tunnelRoute(host);
+    if (next) { next.disabled = false; next.textContent = "Next"; }
+    if (r && r.ok) { wizStep = 4; wizRender(); }
+    else toast((r && r.error) || "Route failed", 'e');
+    return;
+  }
+  wizStep++;
+  wizRender();
+});
+
+// ── Collapsible cards (persisted) ───────────────────────────────────────────
+function colId(el) {
+  if (el.id) return el.id;
+  const head = el.querySelector(".settings-card-head h2, .endpoint-name");
+  const slug = head ? head.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32) : "card";
+  const page = el.closest(".page");
+  return ((page && page.id) || "pg") + ":" + slug;
+}
+function applyCollapse() {
+  let hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem("pc-collapsed") || "[]"); } catch {}
+  document.querySelectorAll(".settings-card, .endpoint").forEach(el => {
+    el.classList.toggle("collapsed", hidden.includes(colId(el)));
+    const head = el.querySelector(":scope > .settings-card-head, :scope > .endpoint-top");
+    if (head && !head.title) head.title = "Click to collapse / expand";
+  });
+  document.querySelectorAll("[data-toggle]").forEach(el => {
+    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+    if (!el.hasAttribute("role")) el.setAttribute("role", "button");
+  });
+}
+function saveCollapse() {
+  const hidden = Array.from(document.querySelectorAll(".settings-card.collapsed, .endpoint.collapsed"), colId);
+  try { localStorage.setItem("pc-collapsed", JSON.stringify(hidden)); } catch {}
+}
+document.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && !e.target.closest("button, input, select, textarea, a")) {
+    const t = e.target.closest("[data-toggle]");
+    if (t && typeof toggleCC === "function") { e.preventDefault(); toggleCC(t.dataset.toggle); }
+  }
+});
+document.addEventListener("click", e => {
+  if (e.target.closest("button, input, select, textarea, a, label.tog")) return;
+  const head = e.target.closest(".settings-card-head, .endpoint-top");
+  if (!head) return;
+  const card = head.closest(".settings-card, .endpoint");
+  if (!card) return;
+  card.classList.toggle("collapsed");
+  saveCollapse();
+});
+applyCollapse();
+
 $('btnSave')?.addEventListener('click', async () => {
   const saveButton = $('btnSave');
   saveButton.disabled = true;
@@ -997,6 +1447,7 @@ if (window.mcp) {
     if (!modal || !txt) { window.mcp.sendShellApprovalRes({ id:msg.id, approved:false }); return; }
     txt.textContent = msg.command;
     modal.classList.add('show');
+    setTimeout(() => $('btnAllow')?.focus(), 50);
     const respond = ok => { modal.classList.remove('show'); window.mcp.sendShellApprovalRes({ id:msg.id, approved:ok }); };
     $('btnDeny').onclick  = () => respond(false);
     $('btnAllow').onclick = () => respond(true);
@@ -1007,13 +1458,199 @@ if (window.mcp) {
 window.mcp?.onStatus(applyStatus);
 window.mcp?.onLog(appendLog);
 
+// ── Health tab ────────────────────────────────────────────────────────────────
+let healthChart = null;
+
+function fmtBytes(n) {
+  if (!n || n < 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0, v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${i > 0 && v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+function fmtUptime(ms) {
+  if (!ms || ms < 0) return '—';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+function themeVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function renderHealthCards(h) {
+  const wrap = $('healthCards');
+  if (!wrap) return;
+  const cards = [
+    { label: 'Runtime', value: h.ready ? 'Ready' : (h.running ? 'Starting' : 'Stopped'), ok: !!h.ready,
+      sub: h.ready ? `${fmtUptime(h.serverUptimeMs)} uptime` : 'Not serving requests' },
+    { label: 'Relay', value: h.relay.connected ? 'Connected' : 'Offline', ok: !!h.relay.connected,
+      sub: h.relay.connected ? 'Hosted relay live' : (h.relay.error || 'Reconnecting…') },
+    { label: 'Tunnel', value: h.tunnel.active ? 'Active' : 'Idle', ok: !!h.tunnel.active,
+      sub: h.tunnel.url ? 'Fallback address live' : 'Not in use' },
+    { label: 'Sessions', value: String(h.sessionCount), ok: h.sessionCount > 0,
+      sub: h.sessionCount ? `${h.sessionCount} AI client connected` : 'None connected' },
+    { label: 'Requests', value: String(h.totalReq), ok: h.totalReq > 0,
+      sub: h.totalErr ? `${h.totalErr} failed` : 'No failures' },
+    { label: 'Internet', value: h.internet ? 'Online' : 'Offline', ok: !!h.internet,
+      sub: h.internet ? 'DNS reachable' : 'No connectivity' },
+  ];
+  wrap.innerHTML = cards.map(c => `
+    <div class="hcard ${c.ok ? 'ok' : 'warn'}">
+      <span class="hcard-dot"></span>
+      <div>
+        <div class="hcard-value">${esc(c.value)}</div>
+        <div class="hcard-label">${esc(c.label)}</div>
+        <div class="hcard-sub">${esc(c.sub)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderHealthProcess(h) {
+  const wrap = $('healthProc');
+  if (!wrap) return;
+  const app = h.appProc, srv = h.serverMetrics;
+  const rows = [
+    ['MCP runtime', srv ? fmtBytes(srv.memBytes) : '—', srv ? `${srv.cpuPct}%` : '—'],
+    ['App UI process', app ? fmtBytes(app.memBytes) : '—', app ? `${app.cpuPct}%` : '—'],
+    ['Sessions', String(h.sessionCount), ''],
+    ['Tools advertised', String(h.toolCount), ''],
+  ];
+  wrap.innerHTML = `<div class="hproc-row head"><span>Component</span><span>Memory</span><span>CPU</span></div>` +
+    rows.map(([a, b, c]) => `<div class="hproc-row"><span>${esc(a)}</span><span class="mono">${esc(b)}</span><span class="mono">${esc(c)}</span></div>`).join('');
+}
+
+function renderHealthTools(h) {
+  const wrap = $('healthTools');
+  if (!wrap) return;
+  const total = h.tools.reduce((s, t) => s + t.total, 0);
+  const cnt = $('healthToolCount');
+  // Requests include MCP protocol chatter (session init, capability lists);
+  // tool calls are actual executions. Show both so the numbers explain each other.
+  if (cnt) cnt.textContent = `${total} tool call${total === 1 ? '' : 's'} · ${h.totalReq} request${h.totalReq === 1 ? '' : 's'}`;
+  if (!h.tools.length) { wrap.innerHTML = '<div class="health-empty">No tool calls yet.</div>'; return; }
+  const max = Math.max(...h.tools.map(t => t.total), 1);
+  wrap.innerHTML = h.tools.map(t => {
+    const okPct = t.total ? (t.ok / t.total) * 100 : 0;
+    const w = (t.total / max) * 100;
+    return `<div class="htool">
+      <div class="htool-top">
+        <span class="htool-name">${esc(t.name)}</span>
+        <span class="htool-count">${t.total}${t.err ? ` · <b class="bad">${t.err} failed</b>` : ''}</span>
+      </div>
+      <div class="htool-track" style="width:${w}%"><div class="htool-ok" style="width:${okPct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderHealthErrors(h) {
+  const wrap = $('healthErrors');
+  if (!wrap) return;
+  const cnt = $('healthErrCount');
+  if (cnt) cnt.textContent = h.totalErr ? `${h.totalErr} total` : '';
+  if (!h.errors.length) { wrap.innerHTML = '<div class="health-empty">No errors recorded. Good.</div>'; return; }
+  wrap.innerHTML = h.errors.map(e => `
+    <div class="herr">
+      <span class="herr-time">${esc(e.time)}</span>
+      <span class="herr-msg">${e.tool ? `<b>${esc(e.tool)}</b> ` : ''}${esc(e.msg)}</span>
+    </div>`).join('');
+}
+
+function renderHealthChart(h) {
+  const canvas = $('healthChart');
+  const empty = $('healthChartEmpty');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const buckets = h.buckets || [];
+  const hasTraffic = buckets.some(b => b.req || b.err);
+  if (empty) empty.style.display = hasTraffic ? 'none' : 'flex';
+
+  const labels = buckets.map(b => new Date(b.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  const req = buckets.map(b => b.req);
+  const err = buckets.map(b => b.err);
+  const teal = themeVar('--teal', '#9bc8bf');
+  const red = themeVar('--red', '#d39a9e');
+  const grid = themeVar('--line', '#292f33');
+  const ink = themeVar('--muted', '#b0b8b7');
+
+  if (healthChart) {
+    const c = healthChart;
+    c.data.labels = labels;
+    c.data.datasets[0].data = req;
+    c.data.datasets[1].data = err;
+    c.data.datasets[0].borderColor = teal;
+    c.data.datasets[1].borderColor = red;
+    c.options.scales.x.ticks.color = ink;
+    c.options.scales.y.ticks.color = ink;
+    c.options.scales.x.grid.color = grid;
+    c.options.scales.y.grid.color = grid;
+    c.update('none');
+    return;
+  }
+
+  healthChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Requests', data: req, borderColor: teal, backgroundColor: teal + '26', borderWidth: 2, tension: .35, fill: true, pointRadius: 0 },
+        { label: 'Errors', data: err, borderColor: red, backgroundColor: red + '26', borderWidth: 2, tension: .35, fill: true, pointRadius: 0 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: ink, maxTicksLimit: 7, font: { size: 10 } }, grid: { color: grid, drawTicks: false } },
+        y: { beginAtZero: true, ticks: { color: ink, precision: 0, font: { size: 10 } }, grid: { color: grid, drawTicks: false } },
+      },
+    },
+  });
+}
+
+async function refreshHealth() {
+  if (!window.mcp || !window.mcp.getHealth) return;
+  let h = null;
+  try { h = await window.mcp.getHealth(); } catch { return; }
+  if (!h) return;
+
+  const pill = $('healthPill');
+  if (pill) {
+    const healthy = h.ready && h.relay.connected;
+    pill.classList.toggle('on', healthy);
+    pill.classList.toggle('warn', !healthy && !!h.running);
+    pill.classList.toggle('off', !h.running);
+    pill.innerHTML = `<i></i>${healthy ? 'Healthy' : (h.running ? 'Degraded' : 'Stopped')}`;
+  }
+
+  renderHealthCards(h);
+  renderHealthProcess(h);
+  renderHealthTools(h);
+  renderHealthErrors(h);
+  // Chart.js measures the canvas, so only draw it once the page is visible.
+  if ($('pg-health')?.classList.contains('on')) renderHealthChart(h);
+}
+
+$('btnHealthRefresh')?.addEventListener('click', refreshHealth);
+document.querySelector('[data-page="health"]')?.addEventListener('click', () => {
+  if (healthChart) { healthChart.destroy(); healthChart = null; }
+});
+setInterval(() => { if (!document.hidden) refreshHealth(); }, 3000);
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   document.querySelectorAll('.page h1').forEach(heading => heading.tabIndex = -1);
   const s = window.mcp ? await window.mcp.getStatus() : null;
   applyStatus(s || { running:false, tunnelUrl:null, relayUrl:null, toolCount:TOOL_TOTAL, sessionCount:0, serverPort:3000 });
   updateToolBadge();
+  refreshTunnel();
   renderLogs();
+  refreshHealth();
   const config = await window.mcp?.getConfig() || {};
   await loadSettings();
   if (!config.ready) showOnboarding(config);

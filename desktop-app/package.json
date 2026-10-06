@@ -14,6 +14,13 @@
     "appId": "com.pccontrolmcp.app",
     "productName": "PC Control MCP",
     "copyright": "PC Control MCP",
+    "files": [
+      "**/*",
+      "!_ui-backup*/**",
+      "!_backup*/**",
+      "!**/_ui-backup*",
+      "!**/_backup*"
+    ],
     "forceCodeSigning": true,
     "win": {
       "target": ["nsis"],
@@ -40,6 +47,8 @@
           "lib/**",
           "tools/**",
           "relay-server/scopes.js",
+          "pc-control-headless/web/**",
+          "desktop-app/renderer/**",
           "node_modules/**"
         ]
       }

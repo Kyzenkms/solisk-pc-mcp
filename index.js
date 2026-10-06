@@ -23,6 +23,10 @@
 
 const crypto = require("crypto");
 
+// Single version source: package.json. The headless server already reports
+// this value — one fleet, one version everywhere.
+const RUNTIME_VERSION = require("./package.json").version;
+
 // ── stdio mode ─────────────────────────────────────────────────────────────────
 
 async function startStdio() {
@@ -36,7 +40,7 @@ async function startStdio() {
 
   const server = new McpServer({
     name: "pc-control-pro",
-    version: "2.0.0",
+    version: RUNTIME_VERSION,
   });
 
   registerAllTools(server);
@@ -83,7 +87,18 @@ async function startHttp(port) {
   // ── Session store ──────────────────────────────────────────────────────────
   const sessions = new Map();
   const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
+  const SESSION_IDLE = 10 * 60 * 1000; // idle sessions (dead retries) fall out sooner
   const MAX_SESSIONS = 5; // max concurrent sessions — evict oldest on overflow
+  setInterval(() => {
+    const cutoff = Date.now() - SESSION_IDLE;
+    for (const [id, s] of sessions) {
+      if ((s.lastSeen || 0) < cutoff) {
+        try { s.transport.close(); } catch {}
+        sessions.delete(id);
+        log("info", `Session idle-expired: ${id}`);
+      }
+    }
+  }, 60 * 1000);
 
   // ── CORS: allow only trusted AI platform origins ──────────────────────────
   // Reflecting any Origin (origin: true) from a public tunnel allows any
@@ -178,7 +193,7 @@ async function startHttp(port) {
     if (authed || hasValidToken) {
       return res.json({
         name: "PC Control MCP PRO",
-        version: "2.0.0",
+        version: RUNTIME_VERSION,
         status: "running",
         mcp_endpoint: "/mcp",
         chatgpt_plugin: "/.well-known/ai-plugin.json",
@@ -206,6 +221,7 @@ async function startHttp(port) {
   // source IP (req.ip === 127.0.0.1) because a local proxy forwards them, so
   // loopback-based checks are NOT a safe way to decide whether auth is needed.
   app.get("/health", apiKeyMiddleware, (req, res) => {
+    setSessionCount(sessions.size);
     res.json(getHealth());
   });
 
@@ -328,7 +344,7 @@ async function startHttp(port) {
       info: {
         title: "PC Control PRO API",
         description: "Control your PC remotely via MCP, REST, or ChatGPT plugins.",
-        version: "2.0.0",
+        version: RUNTIME_VERSION,
       },
       servers: [{ url: base }],
       paths,
@@ -362,6 +378,62 @@ async function startHttp(port) {
   // ── Real OAuth 2.1 server (RFC 8414, 9728, 7591, PKCE) ──────────────────────
   attachOAuthRoutes(app, config);
 
+  // ── Runtime console (additive, read-only, Bearer-gated) ─────────────────────
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    if (config.dashboard_enabled === false) {
+      log("info", "Dashboard disabled by config");
+    } else {
+      const candidates = [
+        path.join(__dirname, "pc-control-headless", "web"), // dev layout
+        path.join(process.resourcesPath || __dirname, "server", "pc-control-headless", "web"), // packaged
+      ];
+      const dashDir = candidates.find((d) => { try { return fs.existsSync(path.join(d, "index.html")); } catch { return false; } });
+      if (!dashDir) {
+        log("warn", "Console bundle missing — /dashboard, /tools, /logs unmounted");
+      } else {
+      // Page shell is public (no data in it); data routes stay Bearer-gated.
+      const dashGate = (req, res, next) => {
+        if (config.dashboard_enabled === false) return res.status(404).json({ error: "dashboard disabled" });
+        next();
+      };
+      app.use("/dashboard", dashGate, express.static(dashDir, {
+        dotfiles: "deny", index: "index.html", maxAge: "1h",
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-cache");
+        },
+      }));
+      app.get("/tools", dashGate, apiKeyMiddleware, (req, res) => {
+        let scopeOf = () => "mcp:tools";
+        try { scopeOf = require("./lib/scopes").toolScopeOf; } catch {}
+        const tools = getToolList().map((t) => ({ name: t.name, scope: scopeOf(t.name) || "mcp:tools" }));
+        tools.sort((a, b) => a.name.localeCompare(b.name));
+        res.json({ count: tools.length, tools });
+      });
+      app.get("/logs", dashGate, apiKeyMiddleware, (req, res) => {
+        const lines = Math.min(Math.max(parseInt(req.query.lines, 10) || 60, 1), 200);
+        try {
+          const { auditLogPath } = require("./lib/security");
+          const st = fs.statSync(auditLogPath);
+          const tailBytes = Math.min(st.size, 1024 * 1024);
+          const fd = fs.openSync(auditLogPath, "r");
+          const buf = Buffer.alloc(tailBytes);
+          fs.readSync(fd, buf, 0, tailBytes, st.size - tailBytes);
+          fs.closeSync(fd);
+          const out = buf.toString("utf8").split("\n")
+            .map((l) => l.slice(0, 500))
+            .filter((l) => l.trim())
+            .slice(-lines);
+          return res.json({ lines: out });
+        } catch {
+          return res.json({ lines: [] });
+        }
+      });
+      }
+    }
+  } catch {}
+
   // ── Rate-limited tool dispatcher (REST API for ChatGPT plugins) ─────────────
   const toolRateLimit = rateLimit({
     windowMs: (config.rate_limit || {}).windowMs || 60_000,
@@ -384,12 +456,67 @@ async function startHttp(port) {
   app.get("/status", apiKeyMiddleware, (req, res) => {
     res.json({
       status: "running",
-      version: "2.0.0",
+      version: RUNTIME_VERSION,
+      mode: "desktop",
       tools: ALL_TOOLS.length,
       sessions: sessions.size,
       uptime_seconds: Math.floor(process.uptime()),
+      port: config.port || 3000,
+      approval: config.permission_mode || "always",
     });
   });
+
+  // Tailnet exposure for the console. Serve/stop only, owner-only.
+  const tailsvc = () => require("./lib/tunnel-service");
+  const tailsState = () => {
+    try {
+      const st = tailsvc().tailscaleStatus();
+      const svc = tailsvc().getState();
+      if (svc.kind === "tailscale" && svc.url) st.url = svc.url;
+      return st;
+    } catch { return { ok: false, loggedIn: false }; }
+  };
+  app.get("/tailscale", apiKeyMiddleware, (req, res) => res.json(tailsState()));
+  app.get("/tunnel", apiKeyMiddleware, (req, res) => {
+    try { return res.json(tailsvc().getState()); }
+    catch { return res.json({ kind: "off" }); }
+  });
+  const ownerGate = (req, res, next) => {
+    const p = req.principal;
+    if (p && (p.type === "owner" || (Array.isArray(p.scopes) && p.scopes.includes("*")))) return next();
+    return res.status(403).json({ ok: false, error: "owner key required" });
+  };
+  app.post("/tailscale/serve", apiKeyMiddleware, ownerGate, (req, res) => {
+    const r = tailsvc().tailscaleServe(config.port || 3000, false);
+    res.json({ ...r, state: tailsState() });
+  });
+  app.post("/tailscale/off", apiKeyMiddleware, ownerGate, (req, res) => {
+    tailsvc().tailscaleOff();
+    res.json({ ok: true, state: tailsState() });
+  });
+
+  // Full desktop GUI in the browser: same renderer, HTTP shim, no Electron.
+  try {
+    const { mountWebBridge } = require("./lib/web-bridge");
+    const domain = (config.relay_domain || "mcp.solisk.org").replace(/^https?:\/\//, "");
+    mountWebBridge(app, {
+      apiKeyMiddleware,
+      loadConfig: () => { loadConfig(); return config; },
+      saveConfig: (next) => { require("./lib/config-repair").writeConfigAtomic(process.env.MCP_CONFIG_PATH, next); },
+      getStatusData: async () => ({
+        running: true, starting: false,
+        tunnelUrl: null,
+        relayUrl: config.relay_enabled === false || !config.name ? null : `https://${domain}/mcp/${config.name}`,
+        relayError: null,
+        toolCount: ALL_TOOLS.length, sessionCount: sessions.size, serverPort: PORT,
+        relayOn: config.relay_enabled !== false,
+        relayRetryCount: 0, maxRelayRetries: 10, isInternetOffline: false,
+        tunnelSvc: (() => { try { return require("./lib/tunnel-service").getState(); } catch { return null; } })(),
+      }),
+    });
+  } catch (err) {
+    log("info", "Web bridge (/app) not mounted: " + (err.message || err));
+  }
 
   // ── MCP Streamable HTTP endpoint (the main entry for ChatGPT/Claude.ai) ──────
   const mcpRateLimit = rateLimit({
@@ -431,7 +558,7 @@ async function startHttp(port) {
     // Create new session
     const server = new McpServer({
       name: "pc-control-pro",
-      version: "2.0.0",
+      version: RUNTIME_VERSION,
     });
 
     registerAllTools(server, req.principal);
@@ -491,7 +618,7 @@ async function startHttp(port) {
   app.use(errorHandler);
 
   // ── Start server ─────────────────────────────────────────────────────────────
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = app.listen(PORT, () => {
       log("info", `PC Control MCP PRO on port ${PORT} — ${ALL_TOOLS.length} tools`, {
         port: PORT,
@@ -509,7 +636,22 @@ async function startHttp(port) {
       console.error(`  Health:        http://localhost:${PORT}/health`);
       console.error(`  ${"═".repeat(54)}\n`);
 
+      startMetricsReporter();
+      try {
+        require("./lib/config-service").watch(process.env.MCP_CONFIG_PATH, () => {
+          log("info", "Config changed externally — toggles apply immediately");
+        });
+      } catch {}
       resolve({ app, port: PORT, sessions, server });
+    });
+
+    server.once("error", (err) => {
+      if (err && err.code === "EADDRINUSE") {
+        err.message = `Port ${PORT} is already in use. Stop the other instance or choose a different port (--port=N or config.port).`;
+      } else if (err && err.code === "EACCES") {
+        err.message = `Permission denied binding port ${PORT}.`;
+      }
+      reject(err);
     });
 
     setupShutdown(server, "http-server");
@@ -541,6 +683,33 @@ if (require.main === module) {
     log("error", "FATAL", { error: err.message, stack: err.stack });
     process.exit(1);
   });
+}
+
+// ── Parent metrics reporter ──────────────────────────────────────────────────────
+// When spawned by the desktop app over an IPC channel, report this process's
+// real memory and CPU usage so the Health tab can show runtime load. No-op in
+// stdio / CLI usage where process.send does not exist.
+function startMetricsReporter() {
+  if (typeof process.send !== "function") return;
+  let lastCpu = process.cpuUsage();
+  let lastAt = Date.now();
+  const timer = setInterval(() => {
+    if (typeof process.send !== "function") { clearInterval(timer); return; }
+    const now = Date.now();
+    const delta = process.cpuUsage(lastCpu);
+    lastCpu = process.cpuUsage();
+    const elapsedMs = Math.max(1, now - lastAt);
+    lastAt = now;
+    const cpuPct = ((delta.user + delta.system) / 1000) / elapsedMs * 100;
+    try {
+      process.send({
+        type: "metrics",
+        memBytes: process.memoryUsage().rss,
+        cpuPct: Math.round(cpuPct * 10) / 10,
+      });
+    } catch { clearInterval(timer); }
+  }, 3000);
+  if (timer.unref) timer.unref();
 }
 
 module.exports = { startHttp, startStdio };

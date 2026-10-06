@@ -13,6 +13,39 @@ function validatePath(filePath) {
   }
 }
 
+// Dependency-free glob matcher for include/exclude filters.
+// Supports `*` (any run except separators), `?` (one char except
+// separators) and `{a,b}` alternation. Matched case-insensitively.
+function globToRegExp(glob) {
+  let out = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*") out += "[^/\\\\]*";
+    else if (c === "?") out += "[^/\\\\]";
+    else if (c === "{") {
+      const j = glob.indexOf("}", i);
+      if (j === -1) { out += "\\{"; continue; }
+      const alts = glob.slice(i + 1, j).split(",").map((alt) =>
+        alt.replace(/[.+^$()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/\\\\]*").replace(/\?/g, "[^/\\\\]")
+      );
+      out += "(?:" + alts.join("|") + ")";
+      i = j;
+    } else if (".+^$()|[]\\".includes(c)) out += "\\" + c;
+    else out += c;
+  }
+  return new RegExp("^(?:" + out + ")$", "i");
+}
+
+function globListMatch(filePath, fileName, list) {
+  const patterns = String(list || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!patterns.length) return false;
+  const normalized = filePath.replace(/\\/g, "/");
+  return patterns.some((p) => {
+    const re = globToRegExp(p);
+    return re.test(fileName) || re.test(normalized);
+  });
+}
+
 const filesystemTools = [
   {
     name: "hash_file",
@@ -43,7 +76,7 @@ const filesystemTools = [
   },
   {
     name: "read_file",
-    description: "Read the full contents of a file from the filesystem.",
+    description: "Read the full contents of a file from the filesystem. Pass limit for OpenCode-style line paging: lines come back prefixed 'N: ' with a next_offset cursor.",
     inputSchema: {
       type: "object",
       properties: {
@@ -51,23 +84,41 @@ const filesystemTools = [
         encoding: { type: "string", description: "File encoding (default: utf8)", default: "utf8" },
         max_bytes: { type: "integer", minimum: 1, maximum: 20971520, description: "Maximum bytes to return (default 2 MiB)", default: DEFAULT_READ_LIMIT },
         offset_bytes: { type: "integer", minimum: 0, default: 0, description: "Zero-based byte offset; use next_offset_bytes to continue a truncated read. Byte boundaries may split multibyte text." },
+        offset: { type: "integer", minimum: 1, default: 1, description: "1-based first line number. Only used when limit > 0." },
+        limit: { type: "integer", minimum: 0, default: 0, description: "Max lines to return; 0 returns the whole byte window. Use next_offset to page." },
       },
       required: ["path"],
     },
-    handler: async ({ path: filePath, encoding = "utf8", max_bytes = DEFAULT_READ_LIMIT, offset_bytes = 0 }) => {
+    handler: async ({ path: filePath, encoding = "utf8", max_bytes = DEFAULT_READ_LIMIT, offset_bytes = 0, offset = 1, limit = 0 }) => {
       try {
         const resolved = path.resolve(filePath);
         validatePath(resolved);
-        const limit = Math.max(1, Math.min(Number(max_bytes) || DEFAULT_READ_LIMIT, 20 * 1024 * 1024));
+        const byteLimit = Math.max(1, Math.min(Number(max_bytes) || DEFAULT_READ_LIMIT, 20 * 1024 * 1024));
         const handle = await fs.promises.open(resolved, "r");
         try {
           const stat = await handle.stat();
           if (!stat.isFile()) throw new Error("Path must be a regular file");
-          const buffer = Buffer.alloc(Math.min(limit, Math.max(0, stat.size - offset_bytes)));
+          const buffer = Buffer.alloc(Math.min(byteLimit, Math.max(0, stat.size - offset_bytes)));
           const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset_bytes);
-          const truncated = offset_bytes + bytesRead < stat.size;
+          const byteTruncated = offset_bytes + bytesRead < stat.size;
+          const text = buffer.subarray(0, bytesRead).toString(encoding);
+          const lineLimit = Math.max(0, Number(limit) || 0);
+          if (lineLimit > 0) {
+            const all = text.split("\n");
+            const start = Math.max(0, (Number(offset) || 1) - 1);
+            const slice = all.slice(start, start + lineLimit);
+            const hasMoreLines = start + lineLimit < all.length;
+            return { success: true, truncated: byteTruncated || hasMoreLines, data: {
+              mode: "lines", content: slice.map((t, i) => `${start + i + 1}: ${t}`).join("\n"),
+              offset: start + 1, limit: lineLimit,
+              next_offset: hasMoreLines ? start + lineLimit + 1 : null,
+              total_lines: byteTruncated ? null : all.length,
+              size: stat.size, returned_bytes: bytesRead, offset_bytes, path: resolved,
+            } };
+          }
+          const truncated = byteTruncated;
           return { success: true, truncated, data: {
-            content: buffer.subarray(0, bytesRead).toString(encoding), size: stat.size,
+            content: text, size: stat.size,
             returned_bytes: bytesRead, offset_bytes,
             next_offset_bytes: truncated ? offset_bytes + bytesRead : null, path: resolved,
           } };
@@ -543,7 +594,7 @@ const filesystemTools = [
   },
   {
     name: "grep_files",
-    description: "Line-aware content search returning matching file paths, line numbers, and matching line text snippets.",
+    description: "Line-aware content search returning matching file paths, line numbers, and matching line text snippets. Use include/exclude globs (e.g. '*.{js,ts}') to narrow the search like OpenCode's grep.",
     inputSchema: {
       type: "object",
       properties: {
@@ -552,10 +603,12 @@ const filesystemTools = [
         max_matches: { type: "number", description: "Maximum matching lines to return (default: 100)", default: 100 },
         is_regex: { type: "boolean", description: "Treat pattern as regex (default: false)", default: false },
         timeout_ms: { type: "number", description: "Timeout in milliseconds (default: 15000)", default: 15000 },
+        include: { type: "string", description: "Comma-separated glob filter; only matching files are searched (e.g. '*.{js,ts}')", default: "" },
+        exclude: { type: "string", description: "Comma-separated glob filter for files to skip (e.g. '*.min.js,*.map')", default: "" },
       },
       required: ["directory", "pattern"],
     },
-    handler: async ({ directory, pattern, max_matches = 100, is_regex = false, timeout_ms = 15000 }) => {
+    handler: async ({ directory, pattern, max_matches = 100, is_regex = false, timeout_ms = 15000, include = "", exclude = "" }) => {
       try {
         const resolved = path.resolve(directory);
         validatePath(resolved);
@@ -576,7 +629,13 @@ const filesystemTools = [
               }
             } else {
               try {
-                const lines = fs.readFileSync(fullPath, "utf8").split("\n");
+                if (include && !globListMatch(fullPath, entry.name, include)) continue;
+                if (exclude && globListMatch(fullPath, entry.name, exclude)) continue;
+                const fstat = fs.statSync(fullPath);
+                if (!fstat.isFile() || fstat.size > 5 * 1024 * 1024) continue;
+                const raw = fs.readFileSync(fullPath, "utf8");
+                if (raw.includes("\0")) continue; // binary — skip
+                const lines = raw.split("\n");
                 lines.forEach((line, idx) => {
                   if (matches.length >= max_matches) return;
                   const isMatch = is_regex ? regex.test(line) : line.toLowerCase().includes(pattern.toLowerCase());
@@ -663,7 +722,9 @@ const filesystemTools = [
         directory: { type: "string", description: "Directory to search" },
         pattern: { type: "string", description: "Search pattern" },
         max_matches: { type: "number", description: "Max matches", default: 100 },
-        is_regex: { type: "boolean", description: "Treat as regex", default: false }
+        is_regex: { type: "boolean", description: "Treat as regex", default: false },
+        include: { type: "string", description: "Comma-separated glob filter, e.g. '*.{js,ts}'", default: "" },
+        exclude: { type: "string", description: "Comma-separated glob filter for files to skip", default: "" }
       },
       required: ["directory", "pattern"],
     },

@@ -40,13 +40,15 @@ apk add --no-cache bash curl
 
 2. Download and run the install script:
    ```sh
-    bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"
+   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"
    ```
    
    Or copy `vps/install.sh` to the VPS and run it:
    ```sh
    bash install.sh
    ```
+
+   The repo is private: curl-pipe install works only with access (or set `REPO_BRANCH` for forks). From a git clone it uses local sources automatically.
 
 3. The script prompts for a **domain type**:
    - **Option 1 — I own a domain**: Caddy provisions free HTTPS via Let's Encrypt. You need an `A` record pointing at the VPS.
@@ -56,8 +58,9 @@ apk add --no-cache bash curl
    - **Domain** (only for option 1, e.g. `mcp.example.com`)
    - **Email** (only for option 1, for Let's Encrypt)
    - **Device name** (e.g. `home-pc`)
+   - **Runtime**: `1` Docker (isolated containers, Caddy beside the relay) or `2` PM2 + Node (plain processes + log files, native Caddy for HTTPS — the same shape this project's own relays run).
 
-5. Docker is installed, the compose stack is written, and the relay starts.
+5. Docker is installed (Docker runtime) or Node 22 + PM2 (PM2 runtime), the stack is written, and the relay starts.
 
 The script does not need an existing Caddy installation. For a real domain it starts Caddy as a Docker service, writes its site configuration, and persists certificates in a Docker volume. Existing host services already using ports 80 or 443 can prevent startup.
 
@@ -81,6 +84,48 @@ The script does not need an existing Caddy installation. For a real domain it st
 ```powershell
 Invoke-RestMethod https://mcp.example.com/health
 ```
+
+---
+
+## Operating it like a grown-up
+
+The installer gets you running. These three keep you running.
+
+**Backups — rooms and OAuth grants live in one volume.** If the VPS dies without a copy, every AI client must re-authorize. Snapshot `relay-data` nightly (Docker):
+
+```sh
+docker run --rm -v pc-control-mcp_relay-data:/data:ro -v /root/backups:/backup alpine \
+  tar -czf /backup/relay-data-$(date +%F).tar.gz -C /data .
+```
+
+PM2 runtime: the same data sits in `/opt/pc-control-mcp/data` — tar that directory instead.
+
+```sh
+docker run --rm -v pc-control-mcp_relay-data:/data:ro -v /root/backups:/backup alpine \
+  tar -czf /backup/relay-data-$(date +%F).tar.gz -C /data .
+```
+
+Keep 7 days (`find /root/backups -name 'relay-data-*' -mtime +7 -delete`) and copy one off the box. Restore is the reverse tar into a fresh volume before first start.
+
+**Firewall — 80/443 in, everything else shut.** The installer adds UFW rules when UFW exists and asks before enabling it (SSH stays allowed). No UFW on your image? Then your provider firewall (security group) must allow only 80/443 (+ SSH from your IP).
+
+**Updates — pin and rebuild monthly.** The compose files float `node:22-alpine` and `caddy:2-alpine`. Once a month (Docker):
+
+```sh
+cd /opt/pc-control-mcp
+docker compose pull && docker compose up -d --build
+docker image prune -f
+```
+
+PM2 runtime: `cd /opt/pc-control-mcp && npm update --omit=dev --prefix relay && pm2 restart pc-control-relay`. Then re-copy fresh `server.js/keys.js/scopes.js/state-store.js` from a release before restarting if the relay code changed.
+
+```sh
+cd /opt/pc-control-mcp
+docker compose pull && docker compose up -d --build
+docker image prune -f
+```
+
+Watch the relay logs after: `docker compose logs --tail 20 relay`. If `/ready` stops returning 200, the stack won't route to it (health-gated `depends_on`).
 
 ---
 

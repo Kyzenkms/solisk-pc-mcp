@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>PC Control — Web dashboard</title>
+<link rel="stylesheet" href="styles.css?v=3" />
+<script defer src="app.js?v=3"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot" id="liveDot"></span><div><strong>PC Control</strong><span class="sub">Web dashboard</span></div></div>
+  <form class="keybar" id="keyForm">
+    <label class="vis" for="base">Server base URL</label>
+    <input id="base" name="base" type="url" autocomplete="off" spellcheck="false" />
+    <label class="vis" for="key">API key</label>
+    <input id="key" name="key" type="password" placeholder="Bearer API key" autocomplete="off" />
+    <button type="submit">Connect</button>
+    <button type="button" id="forget" title="Forget saved key">Forget</button>
+  </form>
+</header>
+<main id="main">
+  <p class="hint" id="hint">Enter the server URL and owner API key. The key stays in this tab's session storage and is sent as a Bearer header — never in URLs.</p>
+  <div id="dash" hidden>
+    <section class="hero"><div><div class="eyebrow">Runtime status</div><h1 id="heroH">Server running</h1><p id="heroSub">—</p><div class="hero-meta"><span>Port <b id="heroPort">—</b></span><span>Tools <b id="heroTools">—</b></span><span>Sessions <b id="heroSess">—</b></span></div></div></section>
+    <section class="metrics">
+      <div class="metric"><span>Uptime</span><b id="mUp">—</b></div>
+      <div class="metric"><span>Approval</span><b id="mAppr">—</b></div>
+      <div class="metric"><span>Relay</span><b id="mRelay">—</b></div>
+      <div class="metric"><span>Tunnel</span><b id="mTun">—</b></div>
+    </section>
+    <h2 class="sechead">Endpoints <span>Available destinations</span></h2>
+    <section class="grid">
+      <article class="card"><div class="card-top"><b>MCP URL</b><i id="sRelay">—</i></div><code id="uRelay">—</code><div class="row"><button data-copy="uRelay">Copy</button></div></article>
+      <article class="card"><div class="card-top"><b>Cloudflare tunnel</b><i id="sTun">—</i></div><code id="uTun">—</code><div class="row"><button data-copy="uTun">Copy</button></div></article>
+      <article class="card"><div class="card-top"><b>Tailnet</b><i id="sTs">—</i></div><code id="uTs">—</code><div class="row"><button id="tsServe">Serve</button><button id="tsOff">Stop</button></div></article>
+      <article class="card"><div class="card-top"><b>This dashboard</b><i class="live">Local</i></div><code id="uSelf">—</code><div class="row"><button data-copy="uSelf">Copy</button></div></article>
+    </section>
+    <h2 class="sechead">Recent activity <span>auto-refresh 5s</span></h2>
+    <section class="panel"><pre id="logs">—</pre></section>
+    <h2 class="sechead">Tools <span id="toolCount"></span></h2>
+    <section class="panel"><input id="toolFilter" type="search" placeholder="Filter tools…" aria-label="Filter tools" /><div class="tools" id="tools"></div></section>
+  </div>
+  <p class="err" id="err" role="alert" hidden></p>
+</main>
+<footer><span>Monitoring + tailnet exposure. Tool calls happen through MCP clients, not here.</span></footer>
+</body>
+</html>

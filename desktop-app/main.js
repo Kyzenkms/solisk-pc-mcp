@@ -27,6 +27,11 @@ const CONFIG_FILE = path.join(app.getPath("userData"), "config.json");
 // Config durability helpers live with the server so both share one implementation.
 const configRepair = require(path.join(SERVER_DIR, "lib", "config-repair.js"));
 
+// Same: shared lib resolves from the server dir (packaged) or repo root (dev).
+function libRequire(name) {
+  return require(path.join(SERVER_DIR, "lib", name));
+}
+
 // The app was previously packaged under a different name, which gave it a
 // different userData directory. Adopt that config once so an upgrade does not
 // look like a factory reset (new API key, lost relay settings, lost mode).
@@ -59,6 +64,9 @@ let tray         = null;
 let serverProc   = null;
 let tunnelProc   = null;
 let tunnelGeneration = 0;
+let customActive = false;
+let customRetries = 0;
+let quickRetries = 0;
 let relayWs      = null;
 let serverPort   = 3000;
 let tunnelUrl    = null;
@@ -71,9 +79,116 @@ let isInternetOffline = false;
 let isRunning    = false;
 let toolCount    = 0;
 let sessionCount = 0;
-let activeSessions = new Set();
+let activeSessions = new Map(); // sess_id -> lastSeen ms
+function trackSession(sid) {
+  if (!sid || typeof sid !== "string" || !sid.startsWith("sess_")) return;
+  if (activeSessions.has(sid)) { activeSessions.set(sid, Date.now()); return; }
+  activeSessions.set(sid, Date.now());
+  sessionCount = activeSessions.size;
+  sendStatus();
+}
+// Drop sessions idle >10 min. Sightings refresh lastSeen, so only dead
+// sessions (failed connects, abandoned retries) fall out.
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  let dropped = false;
+  for (const [sid, seen] of activeSessions) {
+    if (seen < cutoff) { activeSessions.delete(sid); dropped = true; }
+  }
+  if (dropped) { sessionCount = activeSessions.size; try { sendStatus(); } catch {} }
+}, 60 * 1000);
 let logLines     = [];
 let runtimeReady = false;
+let serverStartedAt = 0;
+
+// ── Health metrics ────────────────────────────────────────────────────────────
+// In-memory rolling stats for the Health tab. 60 one-minute buckets give a
+// one-hour window; tool counters and the error feed are capped so this can
+// never grow without bound.
+const HEALTH_BUCKETS = 60;
+const HEALTH_ERRORS  = 60;
+const health = {
+  buckets: [],
+  tools: new Map(),   // name -> { ok, err }
+  errors: [],
+  totalReq: 0,
+  totalErr: 0,
+  serverMetrics: null, // { memBytes, cpuPct, at } reported by the MCP child
+};
+
+function healthBucket() {
+  const minute = Math.floor(Date.now() / 60000) * 60000;
+  let b = health.buckets[health.buckets.length - 1];
+  if (!b || b.t !== minute) {
+    b = { t: minute, req: 0, err: 0 };
+    health.buckets.push(b);
+    if (health.buckets.length > HEALTH_BUCKETS) health.buckets.shift();
+  }
+  return b;
+}
+function healthRequest(toolName) {
+  health.totalReq++;
+  healthBucket().req++;
+  if (toolName && !health.tools.has(toolName)) health.tools.set(toolName, { ok: 0, err: 0 });
+}
+function healthResult(toolName, ok) {
+  const b = healthBucket();
+  let t = toolName ? health.tools.get(toolName) : null;
+  if (toolName && !t) { t = { ok: 0, err: 0 }; health.tools.set(toolName, t); }
+  if (ok) { if (t) t.ok++; }
+  else {
+    b.err++;
+    health.totalErr++;
+    if (t) t.err++;
+  }
+}
+function healthError(msg, meta) {
+  health.errors.unshift({
+    time: new Date().toLocaleTimeString(),
+    msg: String(msg).slice(0, 300),
+    tool: (meta && meta.tool) || null,
+  });
+  if (health.errors.length > HEALTH_ERRORS) health.errors.pop();
+}
+function appProcessMetrics() {
+  // app.getAppMetrics() covers the Electron processes (main, renderer, GPU).
+  // The MCP runtime is an external child, so it reports its own numbers.
+  try {
+    const list = app.getAppMetrics();
+    let cpu = 0, mem = 0;
+    for (const p of list) {
+      cpu += (p.cpu && p.cpu.percentCPUUsage) || 0;
+      mem += ((p.memory && p.memory.workingSetSize) || 0) * 1024;
+    }
+    return { processes: list.length, cpuPct: Math.round(cpu * 10) / 10, memBytes: mem };
+  } catch {
+    return null;
+  }
+}
+function getHealth() {
+  return {
+    startedAt: health.startedAt,
+    uptimeMs: Date.now() - health.startedAt,
+    serverUptimeMs: runtimeReady && serverStartedAt ? Date.now() - serverStartedAt : 0,
+    running: isRunning,
+    ready: runtimeReady,
+    internet: !isInternetOffline,
+    relay: { connected: !!(relayWs && relayWs.readyState === 1), url: relayUrl, error: relayError, retries: relayRetryCount },
+    tunnel: { url: tunnelUrl, active: !!tunnelProc },
+    toolCount, sessionCount,
+    totalReq: health.totalReq,
+    totalErr: health.totalErr,
+    buckets: health.buckets.slice(),
+    tools: Array.from(health.tools.entries())
+      .map(([name, v]) => ({ name, ok: v.ok, err: v.err, total: v.ok + v.err }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 12),
+    errors: health.errors.slice(0, 30),
+    appProc: appProcessMetrics(),
+    serverMetrics: health.serverMetrics,
+  };
+}
+health.startedAt = Date.now();
 
 const dns = require("dns");
 function checkInternetAvailability() {
@@ -125,7 +240,14 @@ function loadConfig() {
       // The userData config is authoritative at runtime. The packaged/root
       // config is only the initial seed; mixing its API key back in causes the
       // relay to authenticate with a different key than the child MCP server.
-      return { ...rootCfg, ...result.config };
+      // Same for relay_enabled: the repo seed ships false, and a missing key
+      // in userData must not inherit that — only an explicit user false
+      // means local-only mode.
+      const merged = { ...rootCfg, ...result.config };
+      if (!Object.prototype.hasOwnProperty.call(result.config, "relay_enabled")) {
+        delete merged.relay_enabled;
+      }
+      return merged;
     }
     if (Object.keys(rootCfg).length > 0) {
       saveConfig(rootCfg);
@@ -166,11 +288,13 @@ function addLog(msg, type = "info", meta = null) {
   };
   logLines.unshift(entry);
   if (logLines.length > 500) logLines.pop();
+  if (type === "error") healthError(msg, meta);
   try {
-    fs.appendFileSync(
-      path.join(app.getPath("userData"), "main.log"),
-      JSON.stringify({ timestamp: new Date().toISOString(), ...entry }) + "\n",
-    );
+    const lf = path.join(app.getPath("userData"), "main.log");
+    try {
+      if (fs.statSync(lf).size > 5 * 1024 * 1024) fs.renameSync(lf, lf + ".1");
+    } catch {}
+    fs.appendFileSync(lf, JSON.stringify({ timestamp: new Date().toISOString(), ...entry }) + "\n");
   } catch {}
   if (win && !win.isDestroyed()) {
     try { win.webContents.send("log", entry); } catch {}
@@ -178,7 +302,10 @@ function addLog(msg, type = "info", meta = null) {
 }
 
 function getStatus() {
-  return { running: isRunning && runtimeReady, starting: isRunning && !runtimeReady, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort, relayRetryCount, maxRelayRetries: MAX_RELAY_RETRIES, isInternetOffline };
+  let tunnelSvc = null, tailscale = null;
+  try { tunnelSvc = libRequire("tunnel-service").getState(); } catch {}
+  try { tailscale = libRequire("tunnel-service").tailscaleStatus(); } catch {}
+  return { running: isRunning && runtimeReady, starting: isRunning && !runtimeReady, tunnelUrl, relayUrl, relayError, toolCount, sessionCount, serverPort, relayRetryCount, maxRelayRetries: MAX_RELAY_RETRIES, isInternetOffline, tunnelSvc, tailscale, relayOn: loadConfig().relay_enabled !== false };
 }
 
 function sendStatus() {
@@ -198,6 +325,7 @@ function startServer(cfg) {
   if (serverProc) { addLog("Start ignored: MCP server is already running", "warn"); return; }
   serverPort = cfg.port || 3000;
   runtimeReady = false;
+  serverStartedAt = 0;
   let serverScript = path.join(process.resourcesPath, "server", "index.js");
   if (!fs.existsSync(serverScript)) {
     serverScript = path.join(__dirname, "index.js");
@@ -229,6 +357,10 @@ function startServer(cfg) {
   serverProc = proc;
   addLog(`Runtime process launched (PID ${serverProc.pid || "pending"})`, "info", { method: "SPAWN", path: serverScript });
   serverProc.on("message", (msg) => {
+    if (msg.type === "metrics") {
+      health.serverMetrics = { memBytes: msg.memBytes || 0, cpuPct: msg.cpuPct || 0, at: Date.now() };
+      return;
+    }
     if (msg.type === "shell_approval_req") {
       if (win && !win.isDestroyed()) {
         win.webContents.send("shell-approval-req", msg);
@@ -242,11 +374,7 @@ function startServer(cfg) {
     const m = t.match(/(\d+) tools/); if (m) { toolCount = parseInt(m[1]); sendStatus(); }
     
     const newSess = t.match(/New MCP session: (sess_[^\s]+)/);
-    if (newSess) {
-      activeSessions.add(newSess[1]);
-      sessionCount = activeSessions.size;
-      sendStatus();
-    }
+    if (newSess) trackSession(newSess[1]);
 
     const closedSess = t.match(/Session (?:closed|expired): (sess_[^\s]+)/);
     if (closedSess) {
@@ -319,6 +447,7 @@ function waitForRuntime(cfg, timeoutMs = 15000) {
         res.resume();
         if (res.statusCode === 200) {
           runtimeReady = true;
+          if (!serverStartedAt) serverStartedAt = Date.now();
           addLog("MCP runtime health check passed", "success");
           sendStatus();
           return resolve(true);
@@ -335,6 +464,7 @@ function waitForRuntime(cfg, timeoutMs = 15000) {
 function stopServer() {
   addLog("Stopping runtime, tunnel, and relay...", "info");
   if (serverProc) { try { serverProc.kill(); } catch {} serverProc = null; }
+  health.serverMetrics = null;
   stopTunnel();
   stopRelay();
   isRunning = false; tunnelUrl = null; relayUrl = null; sessionCount = 0;
@@ -344,48 +474,64 @@ function stopServer() {
 }
 
 function startTunnel(cfg) {
-  if (tunnelProc) { addLog("Tunnel start ignored: process already active", "warn"); return; }
-  const generation = ++tunnelGeneration;
+  const mode = ["off", "quick", "custom"].includes(cfg.tunnel_mode) ? cfg.tunnel_mode : "quick";
+  if (mode === "off") { addLog("Tunnel off by config", "info"); return; }
+  if (mode === "custom") { startCustomTunnel(cfg); return; }
+  let svc;
+  try { svc = libRequire("tunnel-service"); } catch (e) { addLog("Tunnel service unavailable", "error"); return; }
+  if (svc.getState().kind === "quick") { addLog("Tunnel start ignored: already active", "warn"); return; }
+  quickRetries = 0;
   addLog("Starting Cloudflare tunnel...", "info");
-  const doStart = () => {
-    if (!isRunning || generation !== tunnelGeneration) return;
-    const proc = spawn("C:\\Program Files (x86)\\cloudflared\\cloudflared.exe", ["tunnel", "--url", `http://localhost:${serverPort}`], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    tunnelProc = proc;
-    addLog(`Cloudflare process launched (PID ${tunnelProc.pid || "pending"})`, "info");
-      const onData = (data) => {
-        if (generation !== tunnelGeneration || tunnelProc !== proc) return;
-        const t = data.toString();
-      const m = t.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-      if (m && m[0] !== tunnelUrl) {
-        tunnelUrl = m[0];
-        addLog(`Tunnel LIVE: ${tunnelUrl}/mcp`, "success");
-        sendStatus();
-      }
-    };
-    proc.stdout.on("data", onData);
-    proc.stderr.on("data", onData);
-    proc.on("error", (e) => {
-      if (generation === tunnelGeneration && tunnelProc === proc) addLog(`Tunnel error: ${e.message}`, "error");
-    });
-    proc.on("close", () => {
-      if (generation !== tunnelGeneration || tunnelProc !== proc) return;
-      tunnelProc = null;
-      if (isRunning) {
-        addLog("Tunnel dropped — reconnecting in 5s...", "warn");
-        tunnelUrl = null;
-        sendStatus();
-        setTimeout(() => { if (isRunning) doStart(); }, 5000);
-      }
-    });
-  };
-  setTimeout(doStart, 2000);
+  setTimeout(() => {
+    if (!isRunning) return;
+    const r = svc.runQuick(serverPort);
+    if (!r.ok) addLog("Tunnel failed to start", "error");
+  }, 2000);
 }
 
 function stopTunnel() {
   tunnelGeneration++;
+  customActive = false;
   if (tunnelProc) { try { tunnelProc.kill(); } catch {} tunnelProc = null; }
+  try {
+    const svc = libRequire("tunnel-service");
+    svc.stopChild();
+    if ((svc.getState().kind || "off") !== "off" || tunnelUrl) { tunnelUrl = null; sendStatus(); }
+  } catch {}
+}
+
+function startCustomTunnel(cfg) {
+  let svc;
+  try { svc = libRequire("tunnel-service"); } catch (e) { addLog("Tunnel service unavailable", "error"); return; }
+  if (!cfg.tunnel_token || !cfg.tunnel_hostname) {
+    addLog("Custom tunnel needs a token + hostname — open Connect to set it up", "warn");
+    return;
+  }
+  const r = svc.runCustom(cfg.tunnel_token, cfg.tunnel_hostname, serverPort || cfg.port || 3000);
+  if (!r.ok) { addLog("Custom tunnel failed to start", "error"); return; }
+  customActive = true;
+  customRetries = 0;
+  tunnelUrl = `https://${cfg.tunnel_hostname}`;
+  svc.setCustomUrl(tunnelUrl);
+  addLog(`Tunnel starting: ${tunnelUrl}/mcp — verifying reachability…`, "info");
+  sendStatus();
+  verifyTunnelUrl(tunnelUrl);
+}
+
+async function verifyTunnelUrl(url) {
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    if (!customActive) return;
+    try {
+      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(10000) });
+      if (res.status < 500 || res.status === 401) {
+        addLog(`Tunnel VERIFIED: ${url}/mcp reachable (HTTP ${res.status})`, "success");
+        sendStatus();
+        return;
+      }
+    } catch {}
+  }
+  if (customActive) addLog(`Tunnel UNVERIFIED after 30s: ${url} not reachable — check DNS route and connector`, "error");
 }
 
 // ── VPS Relay ─────────────────────────────────────────────────────────────────
@@ -517,26 +663,18 @@ function startRelay(cfg) {
         const { requestId, sessionId, payload } = msg;
         const rpcMethod = payload?.body?.method;
         const toolName = rpcMethod === "tools/call" ? payload?.body?.params?.name : null;
+        healthRequest(toolName);
         addLog(
           toolName ? `Remote tool request: ${toolName}` : `Relay request: ${rpcMethod || payload?.method || "POST"} ${payload?.path || "/mcp"}`,
           "info",
           { tool: toolName, method: rpcMethod || payload?.method || "POST", path: payload?.path || "/mcp", category: toolName ? "TOOL" : "CONN" }
         );
 
-        // Only count real MCP session IDs (sess_*). Ignore auto-init / synthetic sessions.
+        // Only count real MCP session IDs (sess_*). Sightings refresh the
+        // entry; the sweeper drops dead ones. New IDs are also picked up from
+        // initialize responses below, so a fresh connect counts immediately.
         const sid = sessionId || payload?.headers?.["mcp-session-id"];
-        if (sid && sid.startsWith("sess_") && !activeSessions.has(sid)) {
-          activeSessions.add(sid);
-          sessionCount = activeSessions.size;
-          sendStatus();
-          // Auto-expire session from active set after 10 min
-          setTimeout(() => {
-            if (activeSessions.delete(sid)) {
-              sessionCount = activeSessions.size;
-              sendStatus();
-            }
-          }, 10 * 60 * 1000);
-        }
+        trackSession(sid);
         const http = require("http");
         const port = cfg.port || serverPort || 3000;
         const rawPath = payload.path || "/mcp";
@@ -597,6 +735,7 @@ function startRelay(cfg) {
         };
         const localReq = http.request(options, (localRes) => {
           const newSid = localRes.headers["mcp-session-id"] || sessionId;
+          trackSession(newSid); // initialize responses mint the ID — count at connect, not first tool call
           const contentType = localRes.headers["content-type"] || "";
           let body = "";
           localRes.on("data", c => {
@@ -634,6 +773,7 @@ function startRelay(cfg) {
                 localRes.statusCode >= 400 ? "error" : "success",
                 { tool: toolName, method: rpcMethod || payload?.method, status: localRes.statusCode, category: toolName ? "TOOL" : "CONN" }
               );
+              healthResult(toolName, localRes.statusCode < 400);
             } catch (e) {
               if (generation !== relayGeneration || relayWs !== ws || ws.readyState !== 1) return;
               ws.send(JSON.stringify({
@@ -647,6 +787,7 @@ function startRelay(cfg) {
           });
         });
         localReq.on("error", (e) => {
+          healthResult(toolName, false);
           addLog(`Local relay forwarding failed: ${e.message}`, "error", { tool: toolName, method: rpcMethod || payload?.method, category: "ERROR" });
           if (generation !== relayGeneration || relayWs !== ws || ws.readyState !== 1) return;
           ws.send(JSON.stringify({
@@ -708,6 +849,28 @@ function stopRelay() {
   relayError = null;
 }
 
+// ── Relay want-state watcher ─────────────────────────────────────────────────
+// The browser GUI (/app) flips relay_enabled via HTTP, which the child server
+// can't apply to this process's socket. Watch the config file and apply.
+let lastRelayWant = null, cfgWatchTimer = null;
+function applyRelayWant() {
+  let want = true;
+  try { want = loadConfig().relay_enabled !== false; } catch {}
+  if (want === lastRelayWant) return;
+  lastRelayWant = want;
+  if (!isRunning) return;
+  stopRelay();
+  if (want) { relayError = null; try { startRelay(loadConfig()); } catch {} }
+  else addLog("Relay disabled — direct-only", "info", { category: "CONN" });
+  sendStatus();
+}
+try {
+  fs.watch(CONFIG_FILE, () => {
+    if (cfgWatchTimer) clearTimeout(cfgWatchTimer);
+    cfgWatchTimer = setTimeout(applyRelayWant, 500);
+  });
+} catch {}
+
 // ── Window ────────────────────────────────────────────────────────────────────
 function createWindow() {
   win = new BrowserWindow({
@@ -716,7 +879,8 @@ function createWindow() {
     minWidth: 900,
     minHeight: 620,
     title: "PC Control MCP",
-    backgroundColor: "#071112",
+    icon: path.join(__dirname, "assets", "icon.png"),
+    backgroundColor: "#202020",
     frame: false,
     titleBarStyle: "hidden",
     roundedCorners: true,
@@ -819,6 +983,7 @@ function createTray() {
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle("get-status",  () => getStatus());
+ipcMain.handle("get-health",  () => getHealth());
 ipcMain.handle("get-config",  () => loadConfig());
 ipcMain.handle("get-logs",    () => logLines);
 ipcMain.handle("clear-logs",  () => { logLines = []; return true; });
@@ -1034,6 +1199,21 @@ ipcMain.handle("retry-relay", async () => {
   return { ok: true, status: getStatus() };
 });
 
+ipcMain.handle("relay-set", async (_, enabled) => {
+  const on = !!enabled;
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, relay_enabled: on });
+  addLog(on ? "Relay enabled — dialing" : "Relay disabled — direct-only", "info", { category: "CONN" });
+  stopRelay();
+  if (on && isRunning) {
+    relayRetryCount = 0;
+    relayError = null;
+    startRelay(loadConfig());
+  }
+  sendStatus();
+  return { ok: true, enabled: on };
+});
+
 // ── Relay Admin API: per-user key management ──────────────────────────────────
 const https = require("https");
 const http  = require("http");
@@ -1133,8 +1313,188 @@ ipcMain.handle("relay-set-mode", async (_, mode) => {
   return { ok: true, permission_mode: next.permission_mode };
 });
 
+// ── Tunnel + dashboard controls (Connect page, Overview switch) ─────────────
+function tunnelSvc() { return libRequire("tunnel-service"); }
+
+try {
+  libRequire("events").bus.on(libRequire("events").EVENTS.TUNNEL_STATE, (st) => {
+    if (st && st.kind === "quick" && st.url && st.url !== tunnelUrl) {
+      tunnelUrl = st.url;
+      addLog(`Tunnel LIVE: ${tunnelUrl}/mcp`, "success");
+    }
+    if (st && st.kind === "off" && tunnelUrl && !tunnelProc) tunnelUrl = null;
+    if (st && st.kind === "off") {
+      const cfg = loadConfig();
+      const mode = (cfg.tunnel_mode || "quick");
+      if (customActive) {
+        customActive = false;
+        tunnelUrl = null;
+        if (isRunning && mode === "custom" && customRetries < 5) {
+          customRetries++;
+          addLog(`Custom tunnel process ended — retry ${customRetries}/5 in 10s…`, "warn");
+          setTimeout(() => { if (isRunning) startCustomTunnel(loadConfig()); }, 10000);
+        } else if (isRunning) {
+          addLog("Custom tunnel keeps dying — stopped retrying. Check the logs, then flip the switch.", "error");
+        }
+      } else if (isRunning && mode === "quick" && tunnelUrl) {
+        tunnelUrl = null;
+        if (quickRetries < 5) {
+          quickRetries++;
+          addLog(`Tunnel dropped — retry ${quickRetries}/5 in 5s…`, "warn");
+          setTimeout(() => { if (isRunning) startTunnel(loadConfig()); }, 5000);
+        } else {
+          addLog("Tunnel keeps dying — stopped retrying. Check the logs, then flip the switch.", "error");
+        }
+      }
+    }
+    sendStatus();
+  });
+} catch {}
+
+ipcMain.handle("tunnel-state", async () => {
+  const cfg = loadConfig();
+  const svc = tunnelSvc();
+  const ts = svc.tailscaleStatus();
+  const svcState = svc.getState();
+  if (svcState.kind === "tailscale" && svcState.url) ts.url = svcState.url;
+  // The runtime child may serve tailnet itself (console Serve button) — its
+  // state wins when the GUI process isn't the one serving.
+  if (svcState.kind !== "tailscale" && isRunning) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${serverPort || 3000}/tailscale`, {
+        headers: { authorization: "Bearer " + (cfg.api_key || "") },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (r.ok) {
+        const jt = await r.json().catch(() => null);
+        if (jt && jt.loggedIn && jt.url) { ts.url = jt.url; ts.loggedIn = true; }
+      }
+    } catch {}
+  }
+  return {
+    mode: cfg.tunnel_mode || "quick",
+    hostname: cfg.tunnel_hostname || "",
+    hasToken: !!(cfg.tunnel_token && cfg.tunnel_token.length > 20),
+    state: svcState,
+    cfInstalled: svc.cloudflaredInstalled(),
+    loginDone: svc.loginDone(),
+    tailscale: ts,
+    dashboard: cfg.dashboard_enabled !== false,
+  };
+});
+
+ipcMain.handle("tunnel-set-mode", async (_, mode) => {
+  if (!["off", "quick", "custom"].includes(mode)) return { ok: false, error: "mode must be off|quick|custom" };
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, tunnel_mode: mode });
+  addLog(`Tunnel mode set to "${mode}"`, "success");
+  if (!isRunning) return { ok: true, applied: false };
+  stopTunnel();
+  const next = loadConfig();
+  if (mode !== "off") startTunnel(next);
+  else sendStatus();
+  return { ok: true, applied: true };
+});
+
+ipcMain.handle("tunnel-install", async () => {
+  const r = tunnelSvc().installCloudflared();
+  if (r.ok) addLog("cloudflared installed", "success");
+  else addLog(`cloudflared install failed: ${r.hint || r.error || "unknown"}`, "error");
+  return r;
+});
+
+let loginProc = null;
+
+ipcMain.handle("tunnel-login-start", async () => {
+  const bin = tunnelSvc().resolveCloudflared();
+  if (!bin) return { ok: false, error: "cloudflared not found — install it first" };
+  if (loginProc) { try { loginProc.kill(); } catch {} loginProc = null; }
+  const { spawn } = require("child_process");
+  const proc = spawn(bin, ["login"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  loginProc = proc;
+  let opened = false;
+  const timer = setTimeout(() => { try { proc.kill(); } catch {} if (loginProc === proc) loginProc = null; }, 10 * 60 * 1000);
+  const onData = (d) => {
+    if (opened) return;
+    const m = String(d).match(/https:\/\/[^\s"']+/);
+    if (m && /cloudflare\.com|localhost|127\.0\.0\.1/.test(m[0])) {
+      opened = true;
+      try { shell.openExternal(m[0]); } catch {}
+    }
+  };
+  proc.stdout.on("data", onData);
+  proc.stderr.on("data", onData);
+  proc.on("close", () => { clearTimeout(timer); if (loginProc === proc) loginProc = null; });
+  addLog("Cloudflared login started — complete it in the opened browser page", "info");
+  return { ok: true };
+});
+
+ipcMain.handle("tunnel-create", async (_, name) => {
+  const bin = tunnelSvc().resolveCloudflared();
+  if (!bin) return { ok: false, error: "cloudflared not found" };
+  const clean = String(name || "pc-control").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40) || "pc-control";
+  const r = tunnelSvc().createNamedTunnel(bin, clean);
+  if (!r.ok) { addLog(`Tunnel create failed`, "error"); return { ok: false, error: r.error }; }
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, tunnel_name: r.name || clean });
+  addLog(`Tunnel "${r.name || clean}" ready${r.reused ? " (reused)" : ""}`, "success");
+  return { ok: true, name: r.name || clean, reused: !!r.reused };
+});
+
+ipcMain.handle("tunnel-route", async (_, hostname) => {
+  const cfg = loadConfig();
+  const bin = tunnelSvc().resolveCloudflared();
+  if (!bin) return { ok: false, error: "cloudflared not found" };
+  if (!hostname || !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/i.test(hostname) || hostname.includes("..")) return { ok: false, error: "bare hostname only" };
+  const name = cfg.tunnel_name || "pc-control";
+  const routed = tunnelSvc().routeDns(bin, name, hostname);
+  if (!routed.ok) { addLog(`DNS route failed: ${routed.error}`, "error"); return { ok: false, error: routed.error }; }
+  const tok = tunnelSvc().fetchToken(bin, name);
+  if (!tok.ok) { addLog(`Token fetch failed: ${tok.error}`, "error"); return { ok: false, error: tok.error }; }
+  saveConfig({ ...cfg, tunnel_hostname: hostname, tunnel_token: tok.token });
+  addLog(`Custom domain ready: https://${hostname} (token stored, never shown)`, "success");
+  if (win && !win.isDestroyed()) win.webContents.send("config", loadConfig());
+  return { ok: true, hostname };
+});
+
+ipcMain.handle("tunnel-forget", async () => {
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, tunnel_token: "", tunnel_hostname: "", tunnel_mode: "quick" });
+  stopTunnel();
+  if (isRunning) startTunnel(loadConfig());
+  addLog("Custom tunnel forgotten — back to quick", "warn");
+  return { ok: true };
+});
+
+ipcMain.handle("tailscale-serve", async (_, funnel) => {
+  const svc = tunnelSvc();
+  const port = serverPort || 3000;
+  const r = svc.tailscaleServe(port, !!funnel);
+  if (r.ok) addLog(`Tailscale ${funnel ? "funnel" : "serve"} live${r.url ? `: ${r.url}` : ""}`, "success");
+  else addLog(`Tailscale failed: ${r.error}`, "error");
+  sendStatus();
+  return r;
+});
+
+ipcMain.handle("tailscale-off", async () => {
+  tunnelSvc().tailscaleOff();
+  addLog("Tailscale exposure off", "warn");
+  sendStatus();
+  return { ok: true };
+});
+
+ipcMain.handle("dash-set", async (_, enabled) => {
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, dashboard_enabled: !!enabled });
+  addLog(`Console ${enabled ? "enabled" : "disabled"} — live now`, "success");
+  return { ok: true, restart: true };
+});
+
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
+if (process.platform === "win32") {
+  try { app.setAppUserModelId("com.pccontrolmcp.app"); } catch {}
+}
 app.whenReady().then(() => {
   console.log("App ready");
 
@@ -1144,7 +1504,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https: wss:; font-src 'self' https://fonts.gstatic.com"
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: wss:; font-src 'self'"
         ],
       },
     });

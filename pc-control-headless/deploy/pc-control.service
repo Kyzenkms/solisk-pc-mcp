@@ -1,0 +1,27 @@
+[Unit]
+Description=PC Control MCP (headless CLI)
+After=network.target
+
+[Service]
+Type=simple
+User=pcctl
+Group=pcctl
+# MCP_CONFIG_PATH must point at the service config (0600).
+Environment=MCP_CONFIG_PATH=/etc/pc-control/config.json
+Environment=NODE_ENV=production
+Environment=PC_CONTROL_HOST=127.0.0.1
+Environment=PC_CONTROL_PORT=3000
+Environment=PC_CONTROL_APPROVAL=always
+WorkingDirectory=/opt/pc-control-headless/pc-control-headless
+ExecStart=/usr/bin/node /opt/pc-control-headless/pc-control-headless/bin/pc-control.js --mode=http
+Restart=on-failure
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/pc-control
+
+[Install]
+WantedBy=multi-user.target

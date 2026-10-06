@@ -17,30 +17,35 @@ document.querySelectorAll("[data-year]").forEach((node) => {
   node.textContent = new Date().getFullYear();
 });
 
-const loader = document.querySelector(".skeleton-loader");
-const skipIntro = new URLSearchParams(window.location.search).has("skipIntro");
-if (loader) {
-  let removed = false;
-  const removeLoader = () => {
-    if (removed) return;
-    removed = true;
-    loader.classList.add("leaving");
-    setTimeout(() => loader.remove(), 180);
-  };
-
-  if (
-    skipIntro ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
-    loader.remove();
-  } else {
-    const started = performance.now();
-    const finish = () => {
-      const minimumDisplay = Math.max(0, 650 - (performance.now() - started));
-      setTimeout(removeLoader, minimumDisplay);
-    };
-    if (document.readyState === "complete") finish();
-    else window.addEventListener("load", finish, { once: true });
-    setTimeout(removeLoader, 1100);
-  }
+// Ticker: duplicate the set once in JS so the CSS loop is seamless.
+// No-JS still shows a single static set. Pure decoration.
+const track = document.getElementById("tickerTrack");
+if (track && !track.dataset.doubled) {
+  track.dataset.doubled = "1";
+  track.innerHTML += track.innerHTML;
 }
+
+// Motion: one hero entrance + scroll reveals. Everything guards on
+// GSAP presence and no-preference motion; otherwise the page is static
+// and fully visible (all animation uses from-states set here, never CSS).
+(function () {
+  if (!window.gsap || !window.ScrollTrigger) return;
+  if (!window.matchMedia("(prefers-reduced-motion: no-preference)").matches) return;
+  gsap.registerPlugin(ScrollTrigger);
+  gsap.defaults({ duration: 0.7, ease: "power3.out" });
+
+  const hero = gsap.utils.toArray("[data-hero]");
+  if (hero.length) {
+    gsap.from(hero, { y: 28, autoAlpha: 0, stagger: 0.12, delay: 0.1 });
+  }
+
+  const items = gsap.utils.toArray("[data-reveal]");
+  if (items.length) {
+    gsap.set(items, { y: 26, autoAlpha: 0 });
+    ScrollTrigger.batch(items, {
+      start: "top 88%",
+      once: true,
+      onEnter: (batch) => gsap.to(batch, { y: 0, autoAlpha: 1, stagger: 0.08 }),
+    });
+  }
+})();

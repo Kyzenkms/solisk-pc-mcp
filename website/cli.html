@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Run PC Control MCP headless on a VPS or server: CLI install, Docker, local dashboard, and Tailscale remote access."
+    />
+    <title>Headless CLI | PC Control MCP</title>
+    <meta name="theme-color" content="#070c0d" />
+    <meta property="og:title" content="Headless CLI | PC Control MCP" />
+    <meta
+      property="og:description"
+      content="VPS-ready MCP server with CLI, local dashboard, and Tailscale remote access. No Electron."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://solisk.org/cli.html" />
+    <link rel="canonical" href="https://solisk.org/cli.html" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-nav">
+      <nav class="nav-inner" aria-label="Primary">
+        <a class="brand" href="index.html"
+          ><img src="assets/logo.svg" alt="PC Control MCP logo" /><span>PC Control MCP</span></a
+        ><button
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        </button>
+        <div class="nav-links">
+          <a href="index.html">Product</a
+          ><a href="docs.html">Docs</a
+          ><a href="cli.html" aria-current="page">CLI</a
+          ><a href="security.html">Security</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a
+          ><a
+            class="nav-cta"
+            href="https://github.com/Kyzenkms/solisk-mcp/releases"
+            >Download</a
+          >
+        </div>
+      </nav>
+    </header>
+    <main id="main" class="page-shell">
+      <header class="docs-hero">
+        <div class="container">
+          <div class="eyebrow">Edition / Headless 1.0.0</div>
+          <h1>The server build. No window.</h1>
+          <p>
+            Same protocol, same auth, same audit log as the desktop app —
+            packaged as a CLI for VPS and homelab boxes. Off-Windows,
+            Windows-only tools stay off and 45 portable tools stay on
+            (plus a POSIX shell_exec shim = 46 total); on Windows the CLI
+            serves the full native set, exactly like the GUI.
+          </p>
+        </div>
+      </header>
+      <div class="container docs-layout">
+        <aside class="docs-nav" aria-label="CLI sections">
+          <a href="#install">Install</a><a href="#run">Run modes</a
+          ><a href="#dashboard">Dashboard</a
+          ><a href="#tailscale">Tailscale</a
+          ><a href="#cloudflare">Cloudflare</a
+          ><a href="#gui-remote">GUI remote access</a
+          ><a href="#commands">Operator commands</a
+          ><a href="#matrix">Tool matrix</a>
+        </aside>
+        <article class="docs-content">
+          <section id="install">
+            <h2>Install on a VPS</h2>
+            <pre><code>git clone &lt;repo&gt; &amp;&amp; cd &lt;repo&gt;
+sudo bash pc-control-headless/deploy/install.sh
+# prints the owner api_key ONCE — store it</code></pre>
+            <p>Prefer containers?</p>
+            <pre><code>docker compose -f pc-control-headless/docker-compose.yml up -d --build</code></pre>
+            <div class="notice">
+              The server binds <code>127.0.0.1</code> by default. Reach it
+              over SSH tunnel, Tailscale, or a TLS reverse proxy — never
+              publish the node port directly.
+            </div>
+          </section>
+          <section id="run">
+            <h2>Run modes</h2>
+            <pre><code>pc-control --mode=http --host 127.0.0.1 --port 3000
+pc-control --mode=stdio            # Claude Desktop / Cursor / Cline
+pc-control --status                # probe a running server (exit 0 = up)
+pc-control --list-tools            # active vs disabled matrix
+pc-control --setup                 # regenerate config + key</code></pre>
+            <p>
+              Approval defaults to <code>always</code>: read-only shell
+              commands run, mutating ones are refused. Pass
+              <code>--approval-mode=turbo</code> only when any authenticated
+              client may shell the box.
+            </p>
+          </section>
+          <section id="dashboard">
+            <h2>Local dashboard</h2>
+            <p>
+              Every headless server serves a read-only runtime console at
+              <code>/dashboard</code> (Bearer key, same as MCP): live status,
+              tool inventory with scopes, session count, and the audit-log
+              tail refreshing every 5 seconds. No build step, no external
+              assets — works offline.
+            </p>
+            <pre><code>open http://127.0.0.1:3000/dashboard
+# paste the owner API key once (kept in tab session storage)</code></pre>
+          </section>
+          <section id="tailscale">
+            <h2>Tailscale remote access</h2>
+            <p>Tailnet-only (recommended):</p>
+            <pre><code>pc-control --mode=http --tailscale
+# → https://&lt;machine&gt;.&lt;tailnet&gt;  (dashboard + MCP, tailnet HTTPS)</code></pre>
+            <p>Public internet (deliberate only):</p>
+            <pre><code>pc-control --mode=http --tailscale-funnel
+# Bearer key becomes the entire boundary. Prefer tailnet.</code></pre>
+          </section>
+          <section id="cloudflare">
+            <h2>Cloudflare tunnel</h2>
+            <p>
+              A direct pipe from the internet to this box, run by the
+              Cloudflare connector. Two flavors:
+            </p>
+            <p><strong>Quick</strong> — random address, no account:</p>
+            <pre><code>pc-control tunnel quick   # or flip it in the app: Overview → Cloudflare tunnel</code></pre>
+            <p><strong>Custom domain</strong> — stable address on your domain.
+              Needs a Cloudflare account holding that domain. The app (or CLI)
+              walks you through it: browser login (you click once),
+              tunnel creation, DNS routing, token stored as a secret:</p>
+            <pre><code>pc-control tunnel login
+pc-control tunnel create [name]
+pc-control tunnel route mcp.yourdomain.com
+pc-control tunnel custom</code></pre>
+            <div class="notice">
+              Quick addresses change every restart; custom domains don't.
+              The token never prints — <code>tunnel forget</code> drops it.
+            </div>
+          </section>
+          <section id="gui-remote">
+            <h2>GUI remote access</h2>
+            <p>
+              The desktop app serves the same console locally and shows
+              every remote path (relay, Cloudflare tunnel, tailnet) under
+              Overview → Endpoints, with a full status breakdown on the
+              Setup tab.
+            </p>
+            <pre><code>tailscale serve http://127.0.0.1:3000
+# phone on the tailnet → https://&lt;pc&gt;.&lt;tailnet&gt;/dashboard</code></pre>
+            <p>
+              The console observes only. Approvals and control stay on the
+              PC, exactly as before.
+            </p>
+          </section>
+          <section id="commands">
+            <h2>Operator commands</h2>
+            <p>
+              One runtime per machine: commands attach to the running
+              server — GUI or CLI — instead of starting a second one.
+              Output is colored on a terminal, raw when piped.
+            </p>
+            <pre><code>pc-control dashboard            # probe + print console URL (+ open it)
+pc-control dashboard --no-open  # print only, for SSH sessions
+pc-control doctor               # 11 checks: node, config, key, port, tools…
+pc-control doctor --lint        # exit 2 on any failing check (CI gate)
+pc-control doctor --json        # machine-readable report on stdout
+pc-control config get port      # read a value (secrets never print)
+pc-control config set port 3421 # validated write, bad values rejected
+pc-control config validate      # schema check without changing anything
+pc-control rotate-key           # new owner key, old stays valid for handover
+pc-control logs --lines 50      # audit tail (capped, 500 chars/line)
+pc-control logs --follow        # stream new audit lines
+pc-control backup               # timestamped config copy next to config
+pc-control gui status           # is the desktop app installed? runtime up?
+pc-control gui setup --installer "C:\path\to\PC Control MCP Setup 1.0.0.exe"
+pc-control setup                # step-by-step onboarding (needs a terminal)
+pc-control keys list            # fingerprints only — full keys never print
+pc-control keys add phone       # read-only by default, prints once
+pc-control keys add admin --scopes mcp:resources,mcp:tools
+pc-control keys revoke phone    # by id, label, or key prefix (8+ chars)
+pc-control relay status         # live relay state (not just config intent)
+pc-control relay retry          # redial now, same box or remote runtime
+pc-control tunnel [status]      # cloudflared: installed? logged in? live URL?
+pc-control tunnel off|quick|custom
+pc-control tunnel login         # browser login, app waits for the certificate
+pc-control tunnel create [name] # named tunnel (reused if it exists)
+pc-control tunnel route &lt;host&gt;  # DNS + token, stored secret, never shown
+pc-control tunnel forget        # drop token, back to quick
+pc-control tailscale [status] | serve | funnel --yes | off</code></pre>
+            <div class="notice">
+              <code>config set</code> refuses secrets and unknown keys —
+              use <code>rotate-key</code> for keys. In the running app,
+              <code>dashboard_enabled</code> and tunnel mode apply live;
+              ports and paths apply on restart.
+            </div>
+            <p>
+              Headless servers dial the hosted relay outbound, same as the
+              GUI — set <code>name</code> + <code>relay_domain</code> and
+              the box appears on the relay. Inbound exposure stays your
+              choice (Tailscale, SSH tunnel, reverse proxy). Opt out with
+              <code>--no-relay</code> or <code>config set relay_enabled
+              false</code>.
+            </p>
+          </section>
+          <section id="matrix">
+            <h2>Tool matrix</h2>
+            <p>
+              Active on headless: <code>filesystem</code> (20),
+              <code>memory</code> (6), <code>utility</code> (6),
+              <code>network</code> (3), <code>git</code> (10), plus
+              <code>shell_exec</code> (POSIX). Disabled as
+              <code>windows-only</code>: <code>shell</code>,
+              <code>system</code>, <code>system_advanced</code>,
+              <code>input</code>, <code>notification</code>,
+              <code>network_advanced</code>, <code>server</code>.
+              Full audit in <code>pc-control-headless/AUDIT.md</code>.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a class="brand" href="index.html"
+            ><img src="assets/logo.svg" alt="PC Control MCP logo" /><span>PC Control MCP</span></a
+          >
+          <p>Open-source MCP runtime for trusted AI access to Windows.</p>
+        </div>
+        <div>
+          <h3>Docs</h3>
+          <a href="docs.html">Documentation</a><a href="cli.html">Headless CLI</a
+          ><a href="security.html">Security</a>
+        </div>
+        <div>
+          <h3>Project</h3>
+          <a href="https://github.com/Kyzenkms/solisk-mcp">GitHub</a
+          ><a href="https://github.com/Kyzenkms/solisk-mcp/releases">Download</a>
+        </div>
+        <div>
+          <h3>Legal</h3>
+          <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

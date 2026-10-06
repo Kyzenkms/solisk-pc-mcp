@@ -1,0 +1,30 @@
+# Run next to the repo root (build context must include lib/ and tools/):
+#   docker compose -f pc-control-headless/docker-compose.yml up -d --build
+services:
+  pc-control:
+    build:
+      context: ..
+      dockerfile: pc-control-headless/Dockerfile
+    container_name: pc-control-headless
+    restart: unless-stopped
+    # Localhost-only publish. For public use, keep this and add a TLS
+    # reverse proxy (Caddy/nginx) in front instead of publishing 0.0.0.0.
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - pcctl-data:/data
+      # Optional: sandbox the filesystem tools to host paths:
+      # - /srv/ai-work:/work:ro
+    environment:
+      PC_CONTROL_APPROVAL: "always"
+      NODE_ENV: "production"
+      HEALTH_KEY: ${PC_API_KEY:-unset}  # REQUIRED: set PC_API_KEY or healthchecks fail
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health',{headers:{Authorization:'Bearer '+process.env.HEALTH_KEY}}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pcctl-data:

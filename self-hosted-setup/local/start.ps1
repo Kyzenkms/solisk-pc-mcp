@@ -74,6 +74,9 @@ Write-Host "Config written: $configPath" -ForegroundColor DarkGray
 # ── Start relay server ─────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Starting relay server on port $relayPort ..." -ForegroundColor Green
+$env:PORT = "$relayPort"
+$env:DATA_DIR = Join-Path $configDir "relay-data"
+New-Item -ItemType Directory -Path $env:DATA_DIR -Force | Out-Null
 $relayProc = Start-Process -FilePath node -ArgumentList (Join-Path $root "relay-server\server.js") -PassThru -WindowStyle $(if ($Headless) { "Hidden" } else { "Normal" })
 $relayProc | Export-Clixml -Path (Join-Path $env:TEMP "pc-control-relay-proc.xml") -Force
 Write-Host "  Relay PID: $($relayProc.Id)" -ForegroundColor DarkGray
@@ -108,7 +111,7 @@ Write-Host "  MCP URL:       $relayUrl/mcp/$DeviceName"
 Write-Host ""
 Write-Host "  Relay health:  http://127.0.0.1:$relayPort/health"
 Write-Host ""
-Write-Host "  Press Ctrl+C to stop everything."
+Write-Host "  Press Enter to stop everything."
 Write-Host ""
 
 # ── Wait for Ctrl+C ───────────────────────────────────────────────────────────

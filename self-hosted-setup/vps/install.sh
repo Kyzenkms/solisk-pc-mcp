@@ -139,7 +139,82 @@ install_docker() {
   echo "Docker and Compose installed."
 }
 
-install_docker
+install_node() {
+  if command -v node >/dev/null 2>&1; then
+    local major=0
+    major=$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)
+    if [ "$major" -ge 18 ] 2>/dev/null; then
+      echo "Node $(node -v) already installed."
+      return
+    fi
+    echo "Node too old — installing Node 22..."
+  fi
+  if [ ! -r /etc/os-release ]; then
+    echo "ERROR: Cannot identify Linux distribution (/etc/os-release missing)." >&2; exit 1
+  fi
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  local family="${ID_LIKE:-$ID}"
+  set +e
+  case " $family $ID " in
+    *" debian "*|*" ubuntu "*|*" linuxmint "*)
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      apt-get install -y -qq nodejs >/dev/null
+      ;;
+    *" fedora "*|*" rhel "*|*" centos "*|*" rocky "*|*" almalinux "*|*" amzn "*)
+      curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+      (dnf install -y nodejs 2>/dev/null || yum install -y nodejs) >/dev/null
+      ;;
+    *" arch "*|*" manjaro "*)
+      pacman -Sy --noconfirm nodejs npm
+      ;;
+    *" alpine "*)
+      apk add nodejs npm
+      ;;
+    *" suse "*|*" opensuse "*)
+      zypper --non-interactive install nodejs22 npm22
+      ;;
+  esac
+  set -e
+  if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then
+    echo "ERROR: Node 18+ installation failed. Install Node 22 manually and rerun." >&2; exit 1
+  fi
+  echo "Node $(node -v) installed."
+}
+
+install_caddy_native() {
+  # Native Caddy (HTTPS) for the PM2 runtime on real domains.
+  if command -v caddy >/dev/null 2>&1; then
+    echo "Caddy already installed."
+    return
+  fi
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  local family="${ID_LIKE:-$ID}"
+  if echo " $family $ID " | grep -Eq " debian | ubuntu | linuxmint "; then
+    apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl >/dev/null
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+    apt-get update -qq
+    apt-get install -y -qq caddy >/dev/null
+  else
+    local arch
+    case "$(uname -m)" in
+      x86_64|amd64) arch="amd64" ;;
+      aarch64|arm64) arch="arm64" ;;
+      armv7l|armv7) arch="armv7" ;;
+      *) echo "ERROR: Unsupported architecture for Caddy binary: $(uname -m)" >&2; exit 1 ;;
+    esac
+    local ver="2.10.0"
+    curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${ver}/caddy_${ver}_linux_${arch}.tar.gz" -o /tmp/caddy.tgz
+    tar -xzf /tmp/caddy.tgz -C /tmp caddy
+    install -m 0755 /tmp/caddy /usr/local/bin/caddy
+    rm -f /tmp/caddy /tmp/caddy.tgz
+    id caddy >/dev/null 2>&1 || useradd --system --home /var/lib/caddy --create-home --shell /usr/sbin/nologin caddy
+  fi
+  command -v caddy >/dev/null 2>&1 || { echo "ERROR: Caddy installation failed." >&2; exit 1; }
+  echo "Caddy installed."
+}
 
 # ── User input ────────────────────────────────────────────────────────────────
 echo ""
@@ -178,6 +253,20 @@ if [ -z "$DEVICE_NAME" ]; then
   echo "ERROR: Invalid device name." >&2; exit 1
 fi
 
+echo ""
+echo "Runtime: (1) Docker — isolated containers, auto HTTPS  (2) PM2 + Node — plain processes, same as this project's own relays"
+read -r -p "Pick runtime [1/2]: " RUNTIME
+RUNTIME="${RUNTIME:-1}"
+if [ "$RUNTIME" != "1" ] && [ "$RUNTIME" != "2" ]; then
+  echo "ERROR: Pick 1 (Docker) or 2 (PM2)." >&2; exit 1
+fi
+
+if [ "$RUNTIME" = "1" ]; then
+  install_docker
+else
+  install_node
+fi
+
 ADMIN_TOKEN=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 API_KEY=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 
@@ -192,6 +281,8 @@ RELAY_ADMIN_TOKEN=$ADMIN_TOKEN
 EOF
 chmod 600 "$INSTALL_DIR/.env"
 
+if [ "$RUNTIME" = "1" ]; then
+# ── Docker compose files ────────────────────────────────────────────────────
 if [ "$DOMAIN_TYPE" = "2" ]; then
   # sslip.io: expose relay on port 80 directly, no Caddy
   cat > "$INSTALL_DIR/docker-compose.yml" <<COMPOSEEOF
@@ -201,6 +292,11 @@ services:
     restart: unless-stopped
     init: true
     read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -248,6 +344,11 @@ services:
     restart: unless-stopped
     init: true
     read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -276,6 +377,11 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -309,6 +415,7 @@ volumes:
   caddy-config:
 COMPOSEEOF
 fi
+fi # end RUNTIME=docker compose files
 
 cat > "$INSTALL_DIR/relay/Dockerfile" <<DOCKERFILE
 FROM node:22-alpine
@@ -347,255 +454,83 @@ cat > "$INSTALL_DIR/relay/package.json" <<PKGJSON
 PKGJSON
 
 # ── Copy relay source files ───────────────────────────────────────────────────
+# Branch is overridable for forks: REPO_BRANCH=main bash install.sh
+REPO_BRANCH="${REPO_BRANCH:-master}"
+REPO_RAW="https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/${REPO_BRANCH}/relay-server"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$SCRIPT_DIR/relay/server.js" ]; then
-  cp "$SCRIPT_DIR/relay/"*.js "$INSTALL_DIR/relay/"
-  else
-    # Script is running via curl pipe. Fetch exact tracked relay sources instead
-    # of using a stale embedded copy that could miss security fixes.
-    REPO_RAW="https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/main/relay-server"
-    curl -fsSL "$REPO_RAW/server.js" -o "$INSTALL_DIR/relay/server.js"
-    curl -fsSL "$REPO_RAW/keys.js" -o "$INSTALL_DIR/relay/keys.js"
-    curl -fsSL "$REPO_RAW/scopes.js" -o "$INSTALL_DIR/relay/scopes.js"
-    curl -fsSL "$REPO_RAW/state-store.js" -o "$INSTALL_DIR/relay/state-store.js"
-    cat > "$INSTALL_DIR/relay/.source" <<EOF
-$REPO_RAW
-EOF
-    : <<'RELAYSRV'
-"use strict";
-const express = require("express");
-const { WebSocketServer } = require("ws");
-const http = require("http");
-const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
-const app = express();
-app.set("trust proxy", 1);
-app.use(express.json({ limit: "50mb", strict: false }));
-app.use(express.urlencoded({ extended: true }));
-app.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && (err.status === 400 || err.statusCode === 400) && 'body' in err) return res.status(400).json({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
-  next(err);
-});
-const ALLOWED_ORIGINS = new Set(["https://claude.ai","https://www.claude.ai","https://chat.openai.com","https://chatgpt.com","https://platform.openai.com","https://cursor.sh","https://www.cursor.com"]);
-app.use((req, res, next) => {
-  res.removeHeader("X-Powered-By");
-  res.setHeader("X-Content-Type-Options","nosniff");
-  res.setHeader("X-Frame-Options","DENY");
-  res.setHeader("Referrer-Policy","strict-origin-when-cross-origin");
-  const origin = req.headers.origin;
-  const allowed = !origin || ALLOWED_ORIGINS.has(origin) || origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1");
-  if (allowed) { if (origin) res.header("Access-Control-Allow-Origin", origin); res.header("Vary","Origin"); }
-  res.header("Access-Control-Allow-Methods","GET, POST, DELETE, OPTIONS, PUT, PATCH");
-  res.header("Access-Control-Allow-Headers","Content-Type, Authorization, mcp-session-id, openai-ephemeral-user-id, openai-conversation-id, x-request-id");
-  res.header("Access-Control-Expose-Headers","mcp-session-id, x-request-id");
-  if (req.method === "OPTIONS") return res.status(204).end();
-  next();
-});
-const rateBuckets = new Map();
-function rateLimit(opts = {}) {
-  const windowMs = opts.windowMs || 60000;
-  const max = opts.max || 300;
-  return (req, res, next) => {
-    const ip = req.ip || req.socket.remoteAddress || "anon";
-    const now = Date.now();
-    if (!rateBuckets.has(ip)) rateBuckets.set(ip, []);
-    const b = rateBuckets.get(ip);
-    while (b.length && b[0].t < now - windowMs) b.shift();
-    const count = b.reduce((s, e) => s + e.c, 0);
-    if (count >= max) { res.header("Retry-After", Math.ceil(windowMs / 1000)); return res.status(429).json({ error: "rate_limited" }); }
-    const last = b[b.length - 1];
-    if (last && last.t > now - 1000) last.c++; else b.push({ t: now, c: 1 });
-    next();
-  };
-}
-setInterval(() => { const now = Date.now(); for (const [key, b] of rateBuckets) { while (b.length && b[0].t < now - 120000) b.shift(); if (!b.length) rateBuckets.delete(key); } }, 60000).unref();
-app.use(rateLimit());
-const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
-const clients = new Map();
-const pendingReqs = new Map();
-const sseStreams = new Map();
-const sseEventBuf = new Map();
-const codeSession = new Map();
-const sessionInit = new Map();
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-fs.mkdirSync(DATA_DIR, { recursive: true });
-const ROOMS_FILE = path.join(DATA_DIR, "rooms.json");
-const TOKENS_FILE = path.join(DATA_DIR, "oauth_tokens.json");
-function readState(file, fallback) {
-  const candidates = [file, `${file}.bak`];
-  for (const candidate of candidates) {
-    try {
-      if (!fs.existsSync(candidate)) continue;
-      const value = JSON.parse(fs.readFileSync(candidate, "utf8"));
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        if (candidate !== file) console.error(`[relay] Recovered ${path.basename(file)} from backup`);
-        return value;
-      }
-    } catch (error) {
-      console.error(`[relay] Could not read ${path.basename(candidate)}:`, error.message);
-    }
-  }
-  return fallback;
-}
-function writeState(file, value) {
-  const serialized = JSON.stringify(value, null, 2);
-  const temp = `${file}.${process.pid}.tmp`;
-  const backup = `${file}.bak`;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (fs.existsSync(file)) fs.copyFileSync(file, backup);
-  fs.writeFileSync(temp, serialized, { encoding: "utf8", mode: 0o600 });
-  fs.chmodSync(temp, 0o600);
-  fs.renameSync(temp, file);
-}
-let rooms = readState(ROOMS_FILE, {});
-let tokens = readState(TOKENS_FILE, {});
-function saveState() {
-  try { writeState(ROOMS_FILE, rooms); } catch (error) { console.error("[relay] Could not persist rooms:", error.message); }
-  try { writeState(TOKENS_FILE, tokens); } catch (error) { console.error("[relay] Could not persist OAuth tokens:", error.message); }
-}
-const REQUEST_TIMEOUT = 60000;
-function randomToken(bytes = 32) { return crypto.randomBytes(bytes).toString("hex"); }
-function escHtml(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
-function baseUrl(req) { const proto = req.headers["x-forwarded-proto"] || req.protocol || "https"; const host = req.headers["x-forwarded-host"] || req.headers["host"] || `localhost:${req.socket.localPort || 3000}`; return `${proto}://${host}`; }
-
-function hashKey(key) { const salt = crypto.randomBytes(16).toString("hex"); return { salt, hash: crypto.scryptSync(key, salt, 64).toString("hex") }; }
-function verifyKey(key, salt, hash) { return hash === crypto.scryptSync(key, salt, 64).toString("hex"); }
-const FULL_SCOPES = ["pc:file:read","pc:file:write","pc:shell","pc:input","pc:system","pc:network","pc:admin","pc:notification","pc:clipboard","pc:process","pc:screenshot","pc:memory","pc:git","pc:server"];
-function normalizeScopes(scopes) { if (!Array.isArray(scopes) || scopes.length === 0) return FULL_SCOPES.slice(); return scopes.filter(s => FULL_SCOPES.includes(s)); }
-function hasScope(userScopes, toolName) { if (Array.isArray(userScopes) && userScopes.includes("pc:admin")) return true; if (!Array.isArray(userScopes) || userScopes.length === 0) return true; const toolParts = toolName.split("_"); const cat = toolParts.length > 1 ? toolParts[0] : toolName; const needed = `pc:${cat}`; return userScopes.some(s => s === needed || s === `pc:${toolName}`); }
-
-app.get("/health", (req, res) => { res.json({ status: "ok", uptime: Math.floor(process.uptime()) }); });
-
-function getCode(req) {
-  if (req.params && req.params.code) return req.params.code;
-  if (req.query && req.query.code) return req.query.code;
-  if (req.body && req.body.code) return req.body.code;
-  const pathMatch = (req.path || "").match(/^\/mcp\/([^\/?#]+)/);
-  if (pathMatch && pathMatch[1]) return pathMatch[1];
-  const headerCode = req.headers["x-mcp-code"] || req.headers["x-client-code"];
-  if (headerCode) return String(headerCode);
-  const auth = req.headers["authorization"] || "";
-  if (auth.startsWith("Bearer ")) { const t = auth.slice(7).trim(); if (tokens[t] && tokens[t].code) return tokens[t].code; const owner = findKeyOwner(t); if (owner) return owner.code; }
-  if (clients.size > 0) return Array.from(clients.keys())[0];
-  const roomKeys = Object.keys(rooms);
-  if (roomKeys.length > 0) return roomKeys[0];
-  return "default-pc";
-}
-
-function findKeyOwner(token) {
-  if (!token) return null;
-  for (const [code, room] of Object.entries(rooms)) {
-    if (!room || !Array.isArray(room.keys)) continue;
-    for (const k of room.keys) {
-      if (k && k.salt && k.hash && verifyKey(token, k.salt, k.hash)) return { code, scopes: Array.isArray(k.scopes) ? k.scopes : FULL_SCOPES.slice() };
-    }
-  }
-  return null;
-}
-
-function requireAuth(req, res, next) {
-  const p = req.path;
-  if (p === "/health" || p === "/" || p === "/openapi.json" || p.startsWith("/admin/") || p.startsWith("/oauth/") || req.method === "OPTIONS") return next();
-  const auth = req.headers["authorization"] || "";
-  if (!auth.startsWith("Bearer ")) return res.status(401).json({ error: "unauthorized" });
-  const token = auth.slice(7).trim();
-  const code = getCode(req);
-  if (!code) return res.status(400).json({ error: "no_room" });
-  const room = rooms[code];
-  if (room && Array.isArray(room.keys)) {
-    for (const k of room.keys) {
-      if (k && k.salt && k.hash && verifyKey(token, k.salt, k.hash)) { req.principal = { scopes: k.scopes }; return next(); }
-    }
-  }
-  if (!room) return res.status(404).json({ error: "room_not_found" });
-  return res.status(403).json({ error: "forbidden" });
-}
-
-app.use("/mcp", requireAuth);
-app.use("/api", requireAuth);
-app.post("/mcp/:code", (req, res) => { const code = getCode(req); if (!code) return res.status(400).json({ error: "no_code" }); return forwardToPC(code, req, res); });
-app.post("/mcp/:code/*", (req, res) => { const code = getCode(req); if (!code) return res.status(400).json({ error: "no_code" }); return forwardToPC(code, req, res); });
-
-function forwardToPC(code, req, res, extra = {}) {
-  const client = clients.get(code);
-  if (!client || client.readyState !== 1) {
-    return res.status(502).json({ error: "pc_offline", error_description: `PC '${code}' is not connected.` });
-  }
-  const sessionId = codeSession.get(code) || "";
-  const requestId = randomToken(12);
-  const headers = { ...req.headers, "x-forwarded-proto": req.headers["x-forwarded-proto"] || req.protocol || "https" };
-  delete headers["host"];
-  const body = req.body || {};
-  const payload = { method: req.method, path: req.path, headers, body, ...extra };
-  pendingReqs.set(requestId, { res, code, timer: setTimeout(() => { pendingReqs.delete(requestId); if (!res.headersSent) res.status(504).json({ error: "timeout" }); }, REQUEST_TIMEOUT) });
-  try {
-    client.send(JSON.stringify({ type: "request", requestId, sessionId, payload }));
-  } catch (e) {
-    pendingReqs.delete(requestId);
-    if (!res.headersSent) res.status(502).json({ error: "forward_failed" });
-  }
-}
-
-// WebSocket upgrade
-server.on("upgrade", (request, socket, head) => {
-  const url = new URL(request.url, "http://localhost");
-  const code = url.searchParams.get("code");
-  if (!code) { socket.destroy(); return; }
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    ws.on("ping", () => { try { ws.pong(); } catch {} });
-    const pingInterval = setInterval(() => { if (ws.readyState === 1) { try { ws.ping(); } catch {} } else { clearInterval(pingInterval); } }, 15000);
-    ws.on("message", (message) => {
-      try {
-        const data = JSON.parse(message);
-        if (data.type === "init") {
-          const targetCode = data.code || code || "default-pc";
-          const cleanKey = (data.apiKey || "").trim();
-          const existingRoom = rooms[targetCode];
-          const existingKeys = existingRoom && Array.isArray(existingRoom.keys) ? existingRoom.keys : [];
-          const hasOwnerKey = existingKeys.some(k => k.label === "owner" && k.salt && k.hash);
-          if (hasOwnerKey) {
-            const ownerMatch = cleanKey && existingKeys.some(k => k.label === "owner" && k.salt && k.hash && verifyKey(cleanKey, k.salt, k.hash));
-            if (!ownerMatch) { console.log(`[relay] REJECTED init/takeover of '${targetCode}' (bad key)`); try { ws.send(JSON.stringify({ type: "error", code: "ROOM_CONFLICT", message: "Invalid API key for room. Unauthorized takeover attempt blocked." })); } catch {} return; }
-          } else {
-            if (!rooms[targetCode]) { rooms[targetCode] = { keys: [] }; }
-            if (cleanKey) { const { salt, hash } = hashKey(cleanKey); rooms[targetCode].keys = rooms[targetCode].keys.filter(k => k.label !== "owner"); rooms[targetCode].keys.push({ id: "owner", label: "owner", scopes: FULL_SCOPES.slice(), salt, hash, createdAt: Date.now() }); saveState(); }
-          }
-          const existingClient = clients.get(targetCode);
-          if (existingClient && existingClient !== ws && existingClient.readyState === 1) { try { existingClient.close(); } catch {} }
-          clients.set(targetCode, ws);
-          ws.roomCode = targetCode;
-          if (data.userKeys && Array.isArray(data.userKeys)) { const room = rooms[targetCode]; if (room) { data.userKeys.forEach(uk => { if (uk && uk.api_key && !room.keys.some(k => k.id === uk.id)) { const { salt, hash } = hashKey(uk.api_key); room.keys.push({ id: uk.id, label: uk.label || uk.id, scopes: Array.isArray(uk.scopes) ? normalizeScopes(uk.scopes) : FULL_SCOPES.slice(), salt, hash, createdAt: Date.now() }); } }); saveState(); } }
-          console.log(`[relay] PC '${targetCode}' connected.`);
-          ws.send(JSON.stringify({ type: "connected", code: targetCode }));
-          return;
-        }
-        if (data.type === "response" || data.type === "sseChunk" || data.type === "sseClose") {
-          const pending = pendingReqs.get(data.requestId);
-          if (data.type === "response" && pending) { clearTimeout(pending.timer); if (!pending.res.headersSent) { let parsed = data.payload; const ct = data.contentType || "application/json"; try { if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch {} pending.res.json(parsed); } pendingReqs.delete(data.requestId); }
-          if (data.type === "sseChunk" && pending) { const sessionId = data.sessionId; let sseRes = sseStreams.get(sessionId); if (sseRes) { try { sseRes.write(data.payload); } catch { sseStreams.delete(sessionId); } } else { if (!sseEventBuf.has(sessionId)) sseEventBuf.set(sessionId, []); sseEventBuf.get(sessionId).push(data.payload); } }
-          if (data.type === "sseClose" && pending) { clearTimeout(pending.timer); const sessionId = data.sessionId; const sseRes = sseStreams.get(sessionId); if (sseRes) { try { sseRes.end(); } catch {} sseStreams.delete(sessionId); } else { pending.res.end(); } sseEventBuf.delete(sessionId); pendingReqs.delete(data.requestId); }
-          return;
-        }
-      } catch (err) { console.error("[relay] WS message error:", err.message); }
-    });
-    ws.on("close", () => { clearInterval(pingInterval); if (ws.roomCode) { console.log(`[relay] PC '${ws.roomCode}' disconnected.`); const current = clients.get(ws.roomCode); if (current === ws) clients.delete(ws.roomCode); } });
-    ws.on("error", () => {});
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`[relay] Relay server on port ${PORT}`);
-  console.log(`[relay] PC clients connect via: wss://host:${PORT}/?code=<name>`);
-  console.log(`[relay] AI clients connect via: https://host/mcp/<name>`);
-});
-process.on("SIGINT", () => { for (const [, ws] of clients) { try { ws.close(); } catch {} } server.close(() => process.exit(0)); });
-RELAYSRV
-
-
+RELAY_SRCS=""
+for candidate in "$SCRIPT_DIR/relay" "$SCRIPT_DIR/../../relay-server"; do
+  if [ -f "$candidate/server.js" ] && [ -f "$candidate/keys.js" ] && [ -f "$candidate/scopes.js" ] && [ -f "$candidate/state-store.js" ]; then
+    RELAY_SRCS="$candidate"
+    break
+  fi
+done
+if [ -n "$RELAY_SRCS" ]; then
+  echo "Using local relay sources from $RELAY_SRCS"
+  cp "$RELAY_SRCS/server.js" "$RELAY_SRCS/keys.js" "$RELAY_SRCS/scopes.js" "$RELAY_SRCS/state-store.js" "$INSTALL_DIR/relay/"
+else
+  # Script is running via curl pipe. Fetch exact tracked relay sources instead
+  # of using a stale embedded copy that could miss security fixes.
+  echo "Fetching relay sources from ${REPO_RAW} ..."
+  for f in server.js keys.js scopes.js state-store.js; do
+    if ! curl -fsSL "$REPO_RAW/$f" -o "$INSTALL_DIR/relay/$f"; then
+      echo "ERROR: Could not download $f from $REPO_RAW" >&2
+      echo "The repo is private or the branch is wrong — set REPO_BRANCH or run from a git clone." >&2
+      exit 1
+    fi
+  done
+  echo "$REPO_RAW" > "$INSTALL_DIR/relay/.source"
 fi
+
+# Also drop a package.json next to the sources so the PM2 runtime can
+# npm-install without Docker. (The Docker build generates its own.)
+if [ ! -f "$INSTALL_DIR/relay/package.json" ]; then
+  cat > "$INSTALL_DIR/relay/package.json" <<PKGJSON
+{
+  "name": "mcp-cloud-relay",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.19.2", "ws": "^8.17.0" }
+}
+PKGJSON
+fi
+
+if [ "$RUNTIME" = "2" ]; then
+# ── PM2 runtime files ───────────────────────────────────────────────────────
+# sslip (no TLS): relay binds 80 directly. Real domain: relay on 3000
+# behind a native Caddy reverse proxy.
+if [ "$DOMAIN_TYPE" = "2" ]; then
+  PM2_PORT="80"
+else
+  PM2_PORT="3000"
+fi
+mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
+cat > "$INSTALL_DIR/ecosystem.config.cjs" <<ECOSYSTEM
+module.exports = {
+  apps: [{
+    name: "pc-control-relay",
+    script: "./relay/server.js",
+    cwd: "$INSTALL_DIR",
+    instances: 1,
+    exec_mode: "fork",
+    autorestart: true,
+    max_memory_restart: "512M",
+    out_file: "$INSTALL_DIR/logs/relay-out.log",
+    error_file: "$INSTALL_DIR/logs/relay-err.log",
+    log_date_format: "YYYY-MM-DD HH:mm:ss",
+    env: {
+      NODE_ENV: "production",
+      PORT: "$PM2_PORT",
+      DATA_DIR: "$INSTALL_DIR/data",
+      PUBLIC_URL: "$([ "$DOMAIN_TYPE" = "2" ] && echo "http://$DOMAIN" || echo "https://$DOMAIN")",
+      RELAY_ADMIN_TOKEN: "$ADMIN_TOKEN"
+    }
+  }]
+};
+ECOSYSTEM
+chmod 600 "$INSTALL_DIR/ecosystem.config.cjs"
+fi # end RUNTIME=pm2 files
 
 if [ "$DOMAIN_TYPE" = "2" ]; then
   PROTO="http"
@@ -603,15 +538,73 @@ else
   PROTO="https"
 fi
 
+# ── Firewall (UFW): web ports only, never lock out SSH ──────────────────────
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 80/tcp >/dev/null 2>&1 || true
+  ufw allow 443/tcp >/dev/null 2>&1 || true
+  if ufw status 2>/dev/null | grep -qi "inactive"; then
+    echo ""
+    echo "UFW is installed but inactive. Enable it now? (SSH stays allowed) [y/N]"
+    read -r UFW_ANS
+    if [ "$UFW_ANS" = "y" ] || [ "$UFW_ANS" = "Y" ]; then
+      ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null 2>&1 || true
+      ufw --force enable
+    else
+      echo "Skipping UFW enable — ports 80/443 rules were added for when you enable it."
+    fi
+  fi
+fi
+
 # ── Start relay ────────────────────────────────────────────────────────────────
-cd "$INSTALL_DIR"
-docker compose up -d --build
+if [ "$RUNTIME" = "1" ]; then
+  cd "$INSTALL_DIR"
+  docker compose up -d --build
+else
+  if ! command -v pm2 >/dev/null 2>&1; then
+    echo "Installing PM2..."
+    npm install -g pm2
+  fi
+  cd "$INSTALL_DIR/relay"
+  npm install --omit=dev
+  cd "$INSTALL_DIR"
+  if [ "$DOMAIN_TYPE" != "2" ]; then
+    install_caddy_native
+    cat > /etc/caddy/Caddyfile <<CADDYEOF
+{
+  email $ACME_EMAIL
+}
+
+$DOMAIN {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:3000
+}
+CADDYEOF
+    if [ -d /run/systemd/system ]; then
+      if ! systemctl is-active --quiet caddy 2>/dev/null; then
+        systemctl enable --now caddy 2>/dev/null || caddy start --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || true
+      else
+        systemctl reload caddy 2>/dev/null || true
+      fi
+    else
+      pkill -f "caddy run" 2>/dev/null || true
+      caddy start --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || true
+    fi
+  fi
+  pm2 delete pc-control-relay 2>/dev/null || true
+  pm2 start "$INSTALL_DIR/ecosystem.config.cjs"
+  pm2 save
+  STARTUP_CMD=$(pm2 startup systemd -u root --hp /root 2>/dev/null | grep -E '^sudo ' | tail -1 || true)
+  if [ -n "$STARTUP_CMD" ]; then
+    eval "$STARTUP_CMD" >/dev/null 2>&1 || true
+  fi
+fi
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║  Relay deployed and running.                                   ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "  Domain:        ${PROTO}://$DOMAIN"
+echo "  Runtime:       $([ "$RUNTIME" = "1" ] && echo "Docker" || echo "PM2 + Node")"
 echo "  Device name:   $DEVICE_NAME"
 echo "  API key:       $API_KEY"
 echo ""
