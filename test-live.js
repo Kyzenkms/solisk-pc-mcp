@@ -9,16 +9,18 @@ const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
 const { StreamableHTTPClientTransport } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
 
 // Load API key. Desktop userData is authoritative when testing desktop runtime.
-let apiKey = "";
+let apiKey = process.env.MCP_API_KEY || "";
 const appData = process.env.APPDATA || (process.platform === "darwin" ? process.env.HOME + "/Library/Application Support" : process.env.HOME + "/.config");
-for (const sub of ["pc-control-mcp", "pc-control-mcp-desktop"]) {
-  try {
-    const p = path.join(appData, sub, "config.json");
-    if (fs.existsSync(p)) {
-      const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
-      if (cfg.api_key) { apiKey = cfg.api_key; break; }
-    }
-  } catch {}
+if (!apiKey) {
+  for (const sub of ["pc-control-mcp-desktop", "PC Control MCP", "pc-control-mcp"]) {
+    try {
+      const p = path.join(appData, sub, "config.json");
+      if (fs.existsSync(p)) {
+        const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+        if (cfg.api_key) { apiKey = cfg.api_key; break; }
+      }
+    } catch {}
+  }
 }
 if (!apiKey) {
   try {
