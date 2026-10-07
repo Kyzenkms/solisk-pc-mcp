@@ -1,5 +1,30 @@
 const axios = require("axios");
 
+function formatNetworkError(err, toolName) {
+  const code = err.code || "";
+  const msg = err.message || "";
+  if (
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN" ||
+    code === "ENETUNREACH" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    /getaddrinfo|network|internet|offline|disconnected|unreachable/i.test(msg)
+  ) {
+    return {
+      success: false,
+      error: `No internet connection or host unreachable. Please verify your network connection and try again.`,
+      technical_details: msg || code,
+      code: "NO_INTERNET",
+    };
+  }
+  return {
+    success: false,
+    error: `${toolName} failed: ${msg}`,
+    code: `${toolName.toUpperCase().replace(/\s+/g, "_")}_FAILED`,
+  };
+}
+
 const networkTools = [
   {
     name: "http_get",
@@ -32,7 +57,7 @@ const networkTools = [
           }
         };
       } catch (err) {
-        return { success: false, error: err.message, code: "HTTP_GET_FAILED" };
+        return formatNetworkError(err, "HTTP GET");
       }
     },
   },
@@ -65,7 +90,7 @@ const networkTools = [
           }
         };
       } catch (err) {
-        return { success: false, error: err.message, code: "HTTP_POST_FAILED" };
+        return formatNetworkError(err, "HTTP POST");
       }
     },
   },
@@ -148,7 +173,7 @@ const networkTools = [
           }
         };
       } catch (err) {
-        return { success: false, error: err.message, code: "WEB_SEARCH_FAILED" };
+        return formatNetworkError(err, "Web Search");
       }
     },
   },

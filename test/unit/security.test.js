@@ -8,7 +8,7 @@ const os = require("os");
 const { checkPath, resolveApiKey } = require("../../lib/security");
 const configRepair = require("../../lib/config-repair");
 const devices = require("../../lib/devices");
-const { hasScope, toolScopeOf } = require("../../relay-server/scopes");
+const { hasScope, toolScopeOf } = require("../../lib/scopes");
 const { bus, EVENTS } = require("../../lib/events");
 const metrics = require("../../lib/metrics");
 
@@ -29,7 +29,7 @@ function it(name, fn) {
 async function run() {
   console.log("\n--- Unit Tests: Security & Scopes ---");
 
-  // 1. Scopes (enforced via relay-server/scopes.js: hasScope(scopes, toolName))
+  // 1. Scopes (enforced via lib/scopes.js: hasScope(scopes, toolName))
   it("scopes: wildcard and legacy mcp scopes grant all", () => {
     assert.strictEqual(hasScope(["*"], "write_file"), true);
     assert.strictEqual(hasScope(["mcp:tools"], "run_command"), true);
@@ -39,6 +39,13 @@ async function run() {
     assert.strictEqual(hasScope(["pc:file:read"], "read_file"), true);
     assert.strictEqual(hasScope(["pc:file:read"], "write_file"), false);
     assert.strictEqual(hasScope(["pc:file:read"], "run_command"), false);
+  });
+
+  it("scopes: category wildcard grants all actions in category", () => {
+    assert.strictEqual(hasScope(["pc:file:*"], "read_file"), true);
+    assert.strictEqual(hasScope(["pc:file:*"], "write_file"), true);
+    assert.strictEqual(hasScope(["pc:file:*"], "delete_file"), true);
+    assert.strictEqual(hasScope(["pc:file:*"], "run_command"), false);
   });
 
   it("scopes: empty/invalid scope list denies mapped tools", () => {

@@ -19,7 +19,7 @@
     "relay": "node -e \"require('./lib/relay-client').startRelayClient(require('./lib/security').config)\"",
     "inspect": "npx @modelcontextprotocol/inspector node index.js --mode stdio",
     "inspect:http": "npx @modelcontextprotocol/inspector http://localhost:3000/mcp",
-    "test": "node test/unit/security.test.js && node test/e2e.test.js && npm --prefix relay-server test",
+    "test": "node test/unit/permissions.test.js && node test/unit/security.test.js && node test/unit/network_offline.test.js && node test/e2e.test.js && npm --prefix relay-server test",
     "build:exe": "pkg app.js --target node18-win-x64 --output dist/pc-control-mcp.exe --compress GZip",
     "test:live": "node test-live.js"
   },

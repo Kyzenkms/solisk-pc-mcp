@@ -171,9 +171,27 @@ const serverTools = [
           const stat = fs.statSync(resolved);
           return { success: true, data: { saved_to: resolved, size_bytes: stat.size } };
         }
-        return { success: false, error: res.stderr || res.error || "Download failed", code: "DOWNLOAD_FAILED" };
+        const errDetail = res.stderr || res.error || "Download failed";
+        if (/remote name could not be resolved|unable to connect|timed? out|nameresolutionfailure|network/i.test(errDetail)) {
+          return {
+            success: false,
+            error: "No internet connection or download host unreachable. Please verify your connection and try again.",
+            technical_details: errDetail,
+            code: "NO_INTERNET",
+          };
+        }
+        return { success: false, error: errDetail, code: "DOWNLOAD_FAILED" };
       } catch (err) {
-        return { success: false, error: err.message, code: "DOWNLOAD_ERROR" };
+        const msg = err.message || "";
+        if (/getaddrinfo|network|internet|offline|disconnected|unreachable|timed? out/i.test(msg)) {
+          return {
+            success: false,
+            error: "No internet connection or download host unreachable. Please verify your connection and try again.",
+            technical_details: msg,
+            code: "NO_INTERNET",
+          };
+        }
+        return { success: false, error: msg, code: "DOWNLOAD_ERROR" };
       }
     },
   },

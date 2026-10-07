@@ -67,7 +67,24 @@ const advancedNetworkTools = [
           data: { ip, ...geoData }
         };
       } catch (err) {
-        return { success: false, error: err.message, code: "IP_LOOKUP_FAILED" };
+        const code = err.code || "";
+        const msg = err.message || "";
+        if (
+          code === "ENOTFOUND" ||
+          code === "EAI_AGAIN" ||
+          code === "ENETUNREACH" ||
+          code === "ECONNREFUSED" ||
+          code === "ETIMEDOUT" ||
+          /getaddrinfo|network|internet|offline|disconnected|unreachable/i.test(msg)
+        ) {
+          return {
+            success: false,
+            error: "No internet connection or host unreachable. Please verify your network connection and try again.",
+            technical_details: msg || code,
+            code: "NO_INTERNET",
+          };
+        }
+        return { success: false, error: `IP lookup failed: ${err.message}`, code: "IP_LOOKUP_FAILED" };
       }
     },
   },
@@ -143,7 +160,16 @@ const advancedNetworkTools = [
           return { success: false, error: "Failed to parse DNS response", code: "PARSE_ERROR" };
         }
       }
-      return { success: false, error: res.stderr || res.error || `DNS lookup failed for ${domain}`, code: "DNS_LOOKUP_FAILED" };
+      const errDetail = res.stderr || res.error || "";
+      const isUnreachable = /DNS name does not exist|Resolve-DnsName :|Win32Exception|No such host|timed? out/i.test(errDetail);
+      return {
+        success: false,
+        error: isUnreachable
+          ? `DNS lookup failed for "${domain}". The domain does not exist or your internet connection is unavailable.`
+          : `DNS lookup failed for ${domain}: ${errDetail || "Unknown error"}`,
+        code: "DNS_LOOKUP_FAILED",
+        technical_details: errDetail,
+      };
     },
   },
   {

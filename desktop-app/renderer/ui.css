@@ -144,6 +144,8 @@ svg { display: block; }
 .top-status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-right: 10px; white-space: nowrap; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--quiet); transition: background .2s, box-shadow .2s; }
 .status-dot.on { background: var(--lime); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lime) 18%, transparent); }
+.status-dot.warn { background: var(--amber); box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 22%, transparent); }
+.status-dot.offline { background: var(--quiet); }
 .theme-toggle, .window-btn {
   display: grid; place-items: center;
   height: 48px; width: 46px;
@@ -404,6 +406,9 @@ select.inp { padding-right: 30px; }
 .endpoint-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
 .endpoint-state.live { color: var(--lime); }
 .endpoint-state.live::before { background: var(--lime); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 20%, transparent); }
+.endpoint-state.warn { color: var(--amber); }
+.endpoint-state.warn::before { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); }
+.endpoint-state.offline { color: var(--quiet); }
 .endpoint-url { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--muted); word-break: break-all; min-height: 36px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--code-bg); }
 .endpoint-url.live { color: var(--teal); border-style: solid; border-color: color-mix(in srgb, var(--teal) 38%, transparent); }
 

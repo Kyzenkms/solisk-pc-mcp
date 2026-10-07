@@ -191,19 +191,58 @@ function getHealth() {
 health.startedAt = Date.now();
 
 const dns = require("dns");
-function checkInternetAvailability() {
+function checkInternetAvailability(timeoutMs = 3000) {
   return new Promise((resolve) => {
-    dns.lookup("1.1.1.1", (err) => {
-      if (err) {
-        dns.lookup("mcp.solisk.org", (err2) => {
-          resolve(!err2);
-        });
-      } else {
-        resolve(true);
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
       }
+    }, timeoutMs);
+
+    const domains = ["cloudflare.com", "google.com", "mcp.solisk.org"];
+    let pending = domains.length;
+
+    domains.forEach((dom) => {
+      dns.lookup(dom, (err, address) => {
+        if (resolved) return;
+        if (!err && address) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(true);
+          return;
+        }
+        pending--;
+        if (pending === 0 && !resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(false);
+        }
+      });
     });
   });
 }
+
+// Proactive connectivity monitor: periodically checks internet status and notifies renderer
+setInterval(async () => {
+  if (!isRunning) return;
+  const online = await checkInternetAvailability();
+  if (online === isInternetOffline) { // status transitioned
+    isInternetOffline = !online;
+    if (isInternetOffline) {
+      addLog("Internet connection lost — cloud relay and external tools are paused", "warn", { category: "NET", offline: true });
+    } else {
+      addLog("Internet connection restored", "success", { category: "NET", online: true });
+      if (!relayWs && isRunning && loadConfig().relay_enabled !== false) {
+        relayRetryCount = 0;
+        relayError = null;
+        startRelay(loadConfig());
+      }
+    }
+    sendStatus();
+  }
+}, 10000);
 
 function loadConfig() {
   try {
@@ -1190,9 +1229,17 @@ ipcMain.handle("quit-app",    () => { stopServer(); app.exit(0); });
 ipcMain.handle("shell-approval-res", (_, payload) => { if (serverProc) serverProc.send({ type: "shell_approval_res", ...payload }); return true; });
 ipcMain.handle("retry-relay", async () => {
   addLog("Manual relay reconnection requested by user", "info", { category: "CONN" });
+  const online = await checkInternetAvailability();
+  if (!online) {
+    isInternetOffline = true;
+    relayError = "No internet connection detected. Please connect to Wi-Fi or Ethernet.";
+    addLog("Cannot reconnect relay: No internet connection detected", "error", { category: "NET", offline: true });
+    sendStatus();
+    return { ok: false, error: "No internet connection detected. Please connect to Wi-Fi or Ethernet.", status: getStatus() };
+  }
+  isInternetOffline = false;
   relayRetryCount = 0;
   relayError = null;
-  isInternetOffline = false;
   const cfg = loadConfig();
   stopRelay();
   startRelay(cfg);

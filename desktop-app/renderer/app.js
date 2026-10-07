@@ -386,26 +386,35 @@ function applyStatus(s) {
   const on = ST.running;
 
   // Titlebar
-  $('tbDot')?.classList.toggle('on', on);
-  $('tbLive')?.classList.toggle('on', on);
+  $('tbDot')?.classList.toggle('on', on && !ST.isInternetOffline);
+  $('tbDot')?.classList.toggle('warn', on && !!ST.isInternetOffline);
+  $('tbLive')?.classList.toggle('on', on && !ST.isInternetOffline);
+  $('tbLive')?.classList.toggle('warn', on && !!ST.isInternetOffline);
   const tbTxt = $('tbTxt');
-  if (tbTxt) tbTxt.textContent = on ? 'Server running' : 'Server stopped';
+  if (tbTxt) {
+    if (!on) tbTxt.textContent = 'Server stopped';
+    else if (ST.isInternetOffline) tbTxt.textContent = 'Server running · No internet connection';
+    else tbTxt.textContent = 'Server running';
+  }
 
   // Sidebar pill
-  $('srvOrb')?.classList.toggle('on', on);
+  $('srvOrb')?.classList.toggle('on', on && !ST.isInternetOffline);
+  $('srvOrb')?.classList.toggle('warn', on && !!ST.isInternetOffline);
   $('srvBtn')?.classList.toggle('on', on);
   const srvName = $('srvName'), srvHint = $('srvHint'), srvAct = $('srvAct');
-  if (srvName) srvName.textContent = on ? 'Server running' : 'Server stopped';
-  if (srvHint) srvHint.textContent = on ? 'Click to stop'  : 'Ready to start';
+  if (srvName) srvName.textContent = on ? (ST.isInternetOffline ? 'Local only (Offline)' : 'Server running') : 'Server stopped';
+  if (srvHint) srvHint.textContent = on ? (ST.isInternetOffline ? 'No internet connection' : 'Click to stop')  : 'Ready to start';
   if (srvAct)  srvAct.textContent  = on ? '−' : '+';
 
   // Hero
   const hero = $('heroCard');
   hero?.classList.toggle('on', on);
   const heroH = $('heroH'), heroSub = $('heroSub');
-  if (heroH)   heroH.textContent   = on ? 'Your MCP server is live' : 'Your MCP server is stopped';
+  if (heroH)   heroH.textContent   = on ? (ST.isInternetOffline ? 'Server running locally (Offline)' : 'Your MCP server is live') : 'Your MCP server is stopped';
   if (heroSub) heroSub.textContent = on
-    ? `Listening on port ${ST.serverPort} · ${ST.toolCount || TOOL_TOTAL} capabilities available · ${ST.sessionCount || 0} active sessions`
+    ? (ST.isInternetOffline
+        ? `Listening on port ${ST.serverPort} · Local tools available · Internet disconnected`
+        : `Listening on port ${ST.serverPort} · ${ST.toolCount || TOOL_TOTAL} capabilities available · ${ST.sessionCount || 0} active sessions`)
     : 'Click the power button or the sidebar pill to start the MCP server';
 
   $('heroPort')?.replaceChildren(document.createTextNode(String(ST.serverPort || 3000)));
@@ -431,31 +440,68 @@ function applyStatus(s) {
   const epTunnel = $('epTunnel');
   const epLocal  = $('epLocal');
   const btnRetry = $('btnRetryRelay');
+  const relayStateEl = $('relayState');
 
   if (epRelay) {
-    if (ST.relayUrl)  {
+    if (ST.isInternetOffline) {
+      epRelay.textContent = 'No internet connection — connect to Wi-Fi or Ethernet to enable cloud relay';
+      epRelay.classList.remove('live');
+      if (relayStateEl) {
+        relayStateEl.textContent = 'No Internet';
+        relayStateEl.className = 'endpoint-state warn';
+      }
+      if (btnRetry) {
+        btnRetry.style.display = 'inline-block';
+        btnRetry.textContent = 'Check Connection';
+      }
+    }
+    else if (ST.relayUrl)  {
       epRelay.textContent = ST.relayUrl;
       epRelay.classList.add('live');
-      $('relayState')?.replaceChildren(document.createTextNode('Live'));
-      if (btnRetry) btnRetry.style.display = 'none';
+      if (relayStateEl) {
+        relayStateEl.textContent = 'Live';
+        relayStateEl.className = 'endpoint-state live';
+      }
+      if (btnRetry) {
+        btnRetry.style.display = 'none';
+        btnRetry.textContent = 'Retry';
+      }
     }
     else if (ST.relayError && ST.tunnelUrl) {
       epRelay.textContent = 'Hosted relay unavailable — Cloudflare tunnel ready';
       epRelay.classList.remove('live');
-      $('relayState')?.replaceChildren(document.createTextNode('Fallback'));
-      if (btnRetry) btnRetry.style.display = 'inline-block';
+      if (relayStateEl) {
+        relayStateEl.textContent = 'Fallback';
+        relayStateEl.className = 'endpoint-state warn';
+      }
+      if (btnRetry) {
+        btnRetry.style.display = 'inline-block';
+        btnRetry.textContent = 'Retry Connection';
+      }
     }
     else if (ST.relayError) {
       epRelay.textContent = ST.relayError;
       epRelay.classList.remove('live');
-      $('relayState')?.replaceChildren(document.createTextNode('Unavailable'));
-      if (btnRetry) btnRetry.style.display = 'inline-block';
+      if (relayStateEl) {
+        relayStateEl.textContent = 'Unavailable';
+        relayStateEl.className = 'endpoint-state warn';
+      }
+      if (btnRetry) {
+        btnRetry.style.display = 'inline-block';
+        btnRetry.textContent = 'Retry Connection';
+      }
     }
     else {
       epRelay.textContent = on ? 'Connecting to relay…' : 'Server not running';
       epRelay.classList.remove('live');
-      $('relayState')?.replaceChildren(document.createTextNode(on ? 'Connecting' : 'Offline'));
-      if (btnRetry) btnRetry.style.display = on ? 'inline-block' : 'none';
+      if (relayStateEl) {
+        relayStateEl.textContent = on ? 'Connecting' : 'Offline';
+        relayStateEl.className = 'endpoint-state';
+      }
+      if (btnRetry) {
+        btnRetry.style.display = on ? 'inline-block' : 'none';
+        btnRetry.textContent = 'Retry Connection';
+      }
     }
   }
   if (epTunnel) {
@@ -481,11 +527,15 @@ applyStatus = function(s) {
 };
 
 window.retryRelayConn = async function() {
-  toast('Retrying relay connection…');
+  toast('Checking connection…');
   try {
     const res = await window.mcp?.retryRelay();
     if (res && res.status) applyStatus(res.status);
-    toast('Reconnection initiated ✓', 's');
+    if (res && res.ok === false && res.error) {
+      toast(res.error, 'e');
+    } else {
+      toast('Reconnection initiated ✓', 's');
+    }
   } catch (e) {
     toast('Retry failed: ' + (e?.message || e), 'e');
   }
@@ -1154,12 +1204,17 @@ function renderSetup() {
   };
   const relayOn = ST.relayOn !== false;
   syncSwitch("suRelaySwitch", relayOn && ST.running);
-  const relayLive = relayOn && !!(ST.relayUrl || (ST.running && !ST.relayError));
-  set("suRelayState", "suRelayUrl",
-    !ST.running ? "Offline" : !relayOn ? "Off" : ST.relayUrl ? "Live" : ST.relayError ? "Unavailable" : "Connecting",
-    !relayOn ? "Relay off — switch on to reconnect" : ST.relayUrl || (!ST.running ? "—" : "Waiting for relay…"), relayLive);
+  const isOffline = !!ST.isInternetOffline;
+  const relayLive = relayOn && !!(ST.relayUrl || (ST.running && !ST.relayError && !isOffline));
+  const relayStateText = !ST.running ? "Offline" : isOffline ? "No Internet" : !relayOn ? "Off" : ST.relayUrl ? "Live" : ST.relayError ? "Unavailable" : "Connecting";
+  const relayUrlText = isOffline
+    ? "No internet connection detected — Wi-Fi or Ethernet required"
+    : !relayOn
+      ? "Relay off — switch on to reconnect"
+      : ST.relayUrl || (!ST.running ? "—" : "Waiting for relay…");
+  set("suRelayState", "suRelayUrl", relayStateText, relayUrlText, relayLive);
   const rSub = $("suRelaySub");
-  if (rSub) rSub.textContent = !relayOn ? "Direct-only until re-enabled" : "Managed host · always-on room";
+  if (rSub) rSub.textContent = isOffline ? "Offline · reconnect network to use cloud relay" : (!relayOn ? "Direct-only until re-enabled" : "Managed host · always-on room");
   const t = lastTun;
   const tunUrl = (t && t.state && t.state.url) || (ST.tunnelUrl ? ST.tunnelUrl + "/mcp" : "");
   const tunActive = t && t.mode !== "off";
