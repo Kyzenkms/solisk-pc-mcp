@@ -211,6 +211,7 @@ async function main() {
     // Operator commands attach to the running server (GUI or CLI — one
     // runtime per machine) instead of starting a second one.
     const target = resolveTarget(args, config);
+    await reconcileAttachKey(config, target);
     if (args.sub === "dashboard") return await cmdDashboard(args, config, target);
     if (args.sub === "doctor") return await cmdDoctor(args, config, target, configPath);
     if (args.sub === "config") return cmdConfig(args, config, configPath);
@@ -221,7 +222,7 @@ async function main() {
     if (args.sub === "setup") return await cmdSetupWizard(config, configPath);
     if (args.sub === "keys") return cmdKeys(args, config, configPath);
     if (args.sub === "relay") return cmdRelay(args, config, target);
-    if (args.sub === "tunnel") return cmdTunnel(args, config, configPath);
+    if (args.sub === "tunnel") return await cmdTunnel(args, config, configPath);
     if (args.sub === "tailscale") return cmdTailscale(args, config, target);
     console.error(`Unknown command: ${args.sub} (try --help)`);
     process.exit(2);
@@ -274,6 +275,23 @@ async function main() {
     return;
   }
   if (existing && existing.auth === false) {
+    // Same box, other face's key: attach with it instead of walling the user.
+    let guiKey = null;
+    try {
+      const gp = guiConfigPath();
+      guiKey = gp && fs.existsSync(gp) ? JSON.parse(fs.readFileSync(gp, "utf8")).api_key : null;
+    } catch {}
+    if (guiKey && String(guiKey) !== String(config.api_key)) {
+      const retry = await probeStatus(host, wantPort, String(guiKey));
+      if (retry && retry.s) {
+        const s = retry.s;
+        console.error(`${green("●")} ${bold("already running")}  ${cyan(s.mode || "?")} ${dim("v" + (s.version || "?"))} — ` +
+          `${bold(s.tools ?? "?")} tools, ${bold(s.sessions ?? "?")} sessions, uptime ${s.uptime_seconds ?? "?"}s`);
+        console.error(`  console  ${cyan(`http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${wantPort}/app`)}`);
+        console.error(dim(`  attached with the GUI face's key — not starting a second server.`));
+        return;
+      }
+    }
     console.error(yellow("▲") + " " + keyMismatchHint());
     console.error(dim(`  refusing to start a second server on ${wantPort} — fix the key, don't duplicate the runtime.`));
     process.exit(1);
@@ -354,6 +372,28 @@ function keyMismatchHint() {
     (g && fs.existsSync(g)
       ? `  point at the GUI config: --config "${g}"`
       : `  use the config of the running server, or rotate + restart it.`);
+}
+
+// Same-box key fallback: when this config's key is refused but the GUI
+// face's key opens the running server, use it for this run and say so.
+// This is what makes a fresh `pc-control doctor` work without flags.
+let _attachNoteShown = false;
+async function reconcileAttachKey(config, target) {
+  if (!config || !config.api_key) return;
+  const first = await probeStatus(target.host, target.port, config.api_key);
+  if (first && first.s) return; // key works ({auth:false} means refused — fall through to the GUI key)
+  const gp = guiConfigPath();
+  let guiKey = null;
+  try { guiKey = gp && fs.existsSync(gp) ? JSON.parse(fs.readFileSync(gp, "utf8")).api_key : null; } catch {}
+  if (!guiKey || String(guiKey) === String(config.api_key)) return;
+  const second = await probeStatus(target.host, target.port, String(guiKey));
+  if (second && second.s) {
+    config.api_key = String(guiKey);
+    if (!_attachNoteShown) {
+      _attachNoteShown = true;
+      try { console.error(dim(`note: this config's key was refused — using the GUI face's key for this run (${keyFp(config.api_key)}).`)); } catch {}
+    }
+  }
 }
 
 async function cmdDashboard(args, config, target) {
@@ -503,10 +543,20 @@ function cmdConfig(args, config, configPath) {
     process.exit(2);
   }
   if (op === "get") {
-    if (!key || !(key in config)) { console.error(`unknown key: ${key || "(missing)"}`); process.exit(2); }
+    if (!key) { console.error(`unknown key: (missing)`); process.exit(2); }
     if (CONFIG_SECRET.has(key)) { console.error(`${key} is a secret — it is never printed. Use rotate-key.`); process.exit(2); }
-    const v = config[key];
-    console.error(typeof v === "object" ? JSON.stringify(v) : String(v));
+    let v = config[key];
+    let srcNote = "";
+    if (v === undefined) {
+      // Same-box fallback: the GUI face owns keys this config never set.
+      try {
+        const gp = guiConfigPath();
+        const g = gp && fs.existsSync(gp) ? JSON.parse(fs.readFileSync(gp, "utf8")) : null;
+        if (g && g[key] !== undefined && !CONFIG_SECRET.has(key)) { v = g[key]; srcNote = "  (from GUI config)"; }
+      } catch {}
+    }
+    if (v === undefined) { console.error(`unknown key: ${key}`); process.exit(2); }
+    console.error((typeof v === "object" ? JSON.stringify(v) : String(v)) + (srcNote ? dim(srcNote) : ""));
     return;
   }
   if (op === "set") {
@@ -552,8 +602,16 @@ function cmdRotateKey(config, configPath) {
 function cmdLogs(args, configPath) {
   const lines = Math.min(Math.max(Number(args.lines) || 50, 1), 200);
   let auditLogPath = null;
-  try { auditLogPath = require("../../lib/security").auditLogPath; }
-  catch { console.error("cannot resolve audit log path"); process.exit(1); }
+  // Same-box first: the running server (usually the GUI face) owns the live log.
+  try {
+    const gp = guiConfigPath();
+    const guiLog = gp ? path.join(path.dirname(gp), "logs", "audit.log") : null;
+    if (guiLog && fs.existsSync(guiLog)) auditLogPath = guiLog;
+  } catch {}
+  if (!auditLogPath) {
+    try { auditLogPath = require("../../lib/security").auditLogPath; }
+    catch { console.error("cannot resolve audit log path"); process.exit(1); }
+  }
   const tail = (n) => {
     try {
       const st = fs.statSync(auditLogPath);
@@ -901,6 +959,10 @@ async function cmdRelay(args, config, target) {
       if (r.status === 401 || r.status === 403) { console.error(yellow("▲") + " " + keyMismatchHint()); process.exit(1); }
       if (!r.ok) { console.error(red(`● retry refused: HTTP ${r.status}`)); process.exit(1); }
       const st = await r.json().catch(() => ({}));
+      if (st && st.ok && st.via === "shell") {
+        console.error(`${green("●")} relay retry sent to the running app — watch its status go live.`);
+        return;
+      }
       show(st.relay || st);
       return;
     } catch (err) {
@@ -915,6 +977,12 @@ async function cmdRelay(args, config, target) {
     } catch {}
     const found = await probeStatus(target.host, target.port, config.api_key).catch(() => null);
     if (found && found.s && found.s.relay) { show(found.s.relay); return; }
+    if (found && found.s && found.s.relayUrl) {
+      // Desktop runtime shape: URL derived from the live config.
+      const m = String(found.s.relayUrl).match(/^https?:\/\/([^/]+)\/mcp\/(.+)$/);
+      show({ state: "connected", room: m ? m[2] : config.name, domain: m ? m[1] : undefined });
+      return;
+    }
     if (found && !found.s) { console.error(yellow("▲") + " " + keyMismatchHint()); process.exit(1); }
     if (config.relay_enabled === false) console.error(dim("relay off by config — direct-only."));
     else if (!config.name) console.error(dim("relay not configured — no `name` yet (`setup` step 1)."));
@@ -926,7 +994,7 @@ async function cmdRelay(args, config, target) {
 }
 
 // ── Tunnel + tailscale (same service the GUI uses) ──────────────────────────
-function cmdTunnel(args, config, configPath) {
+async function cmdTunnel(args, config, configPath) {
   const svc = require("../../lib/tunnel-service");
   const configRepair = require("../../lib/config-repair");
   const save = () => configRepair.writeConfigAtomic(configPath, config);
@@ -940,6 +1008,27 @@ function cmdTunnel(args, config, configPath) {
     else console.error(`  state        ${st.kind}${st.url ? "  " + cyan(st.url) : dim("  (starting…)")}`);
     if (config.tunnel_hostname) console.error(`  hostname     ${cyan(config.tunnel_hostname)}   token  ${config.tunnel_token ? dim("stored") : yellow("missing")}`);
     console.error(dim("  mode changes apply on restart (`config set tunnel_mode off|quick|custom`)."));
+    // Same-box live state: the running server (usually the GUI face) may
+    // differ from this file — show both so they can't silently disagree.
+    try {
+      const live = await (async () => {
+        const { host, port } = resolveTarget({}, config);
+        const r = await fetch(`http://${host}:${port}/api/tunnel`, {
+          headers: { authorization: "Bearer " + config.api_key },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return null;
+        return await r.json().catch(() => null);
+      })();
+      if (live && (live.mode !== (config.tunnel_mode || "quick") || (live.hostname || "") !== (config.tunnel_hostname || ""))) {
+        console.error(`  ${yellow("▲")} live server: mode ${cyan(live.mode || "?")}` +
+          (live.hostname ? `  hostname ${cyan(live.hostname)}` : "") +
+          (live.state && live.state.url ? `  url ${cyan(live.state.url)}` : "") +
+          dim("  (GUI face — `config set` edits this file)"));
+      } else if (live) {
+        console.error(`  ${green("●")} live server agrees${live.state && live.state.url ? dim(` — ${live.state.url}`) : ""}`);
+      }
+    } catch {}
     return;
   }
   if (["off", "quick", "custom"].includes(op)) {

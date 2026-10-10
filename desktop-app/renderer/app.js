@@ -331,6 +331,38 @@ function toast(msg, type = '') {
   el._t = setTimeout(() => el.className = '', 2800);
 }
 
+// Plain-language errors: technical failure text goes in, a human sentence
+// comes out. Pass a fallback for the case where nothing useful was said.
+function friendlyErr(e, fallback) {
+  const raw = String((e && (e.message || e.error)) || (typeof e === "string" ? e : "") || "");
+  const t = raw.toLowerCase();
+  if (!navigator.onLine || ST.isInternetOffline || /eai_again|enotfound|network|offline|failed to fetch|load failed|no internet|internet connection/i.test(t))
+    return "No internet connection — check it and try again. Everything on this PC still works.";
+  if (/econnrefused|connection refused|not responding/i.test(t))
+    return "The server isn't answering — is it still running? Try starting it.";
+  if (/etimedout|timed out|timeout/i.test(t))
+    return "That took too long — the connection may be slow. Try again.";
+  if (/econnreset|socket hang|econnaborted|broken pipe/i.test(t))
+    return "The connection dropped halfway — try again.";
+  if (/ 401|unauthorized|invalid key|forbidden| 403/i.test(t))
+    return "That key was refused — double-check the API key.";
+  if (/ 429|rate ?limit|too many/i.test(t))
+    return "Too many tries at once — wait a few seconds.";
+  const clean = raw.replace(/^error:\s*/i, "").trim();
+  if (!clean || clean === "[object Object]") return fallback || "Something went wrong — try again.";
+  return clean.length > 150 ? clean.slice(0, 150) + "…" : clean;
+}
+
+// Actions below need the internet. When offline, say so once and stop —
+// the relay redials by itself when the connection returns.
+function needsNet() {
+  if (!navigator.onLine || ST.isInternetOffline) {
+    toast("You're offline — this needs the internet. It will retry on its own when you're back.", 'e');
+    return false;
+  }
+  return true;
+}
+
 window.copyEl = async function(id) {
   const el = $(id);
   if (!el) return;
@@ -527,17 +559,18 @@ applyStatus = function(s) {
 };
 
 window.retryRelayConn = async function() {
+  if (!needsNet()) return;
   toast('Checking connection…');
   try {
     const res = await window.mcp?.retryRelay();
     if (res && res.status) applyStatus(res.status);
     if (res && res.ok === false && res.error) {
-      toast(res.error, 'e');
+      toast(friendlyErr(res.error, "Couldn't reach the relay."), 'e');
     } else {
-      toast('Reconnection initiated ✓', 's');
+      toast('Reconnecting — watch the status pill ✓', 's');
     }
   } catch (e) {
-    toast('Retry failed: ' + (e?.message || e), 'e');
+    toast(friendlyErr(e, "Couldn't reach the relay."), 'e');
   }
 };
 
@@ -554,7 +587,7 @@ async function toggleServer() {
     if (ST.running) { toast('Stopping server…'); await window.mcp.stopServer(); }
     else            { toast('Starting server…'); await window.mcp.startServer(); }
   } catch (error) {
-    toast(error?.message || 'Unable to change server state', 'e');
+    toast(friendlyErr(error, 'Unable to change server state'), 'e');
   } finally {
     serverActionPending = false;
     setServerControlsBusy(false);
@@ -1138,7 +1171,7 @@ $('btnRegenerateConfirm')?.addEventListener('click', async () => {
     await renderConnect();
     toast('New MCP URL created. Previous sessions were disconnected.', 's');
   } catch (error) {
-    toast(error?.message || 'MCP URL could not be regenerated', 'e');
+    toast(friendlyErr(error, 'MCP URL could not be regenerated'), 'e');
   } finally {
     button.disabled = false;
     button.textContent = 'Yes, regenerate';
@@ -1273,11 +1306,12 @@ async function refreshTunnel() {
 }
 
 async function setTunMode(mode) {
+  if (mode !== "off" && !needsNet()) { refreshTunnel(); return; }
   try {
     const r = await window.mcp?.tunnelSetMode(mode);
     if (r && r.ok) { toast(mode === "off" ? "Tunnel off" : `Tunnel ${mode} — ${r.applied ? "applied live" : "applies on start"}`, 's'); }
-    else toast((r && r.error) || "Tunnel switch failed", 'e');
-  } catch { toast("Tunnel switch failed", 'e'); }
+    else toast(friendlyErr(r && r.error, "Tunnel switch failed"), 'e');
+  } catch (e) { toast(friendlyErr(e, "Tunnel switch failed"), 'e'); }
   refreshTunnel();
 }
 
@@ -1285,12 +1319,23 @@ $('tunModeOff')?.addEventListener('click', () => setTunMode('off'));
 $('tunModeQuick')?.addEventListener('click', () => setTunMode('quick'));
 $('tunModeCustom')?.addEventListener('click', () => setTunMode('custom'));
 $('tunSwitch')?.addEventListener('change', e => setTunMode(e.target.checked ? lastTunMode : 'off'));
-$('tsServe')?.addEventListener('click', async () => { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); refreshTunnel(); });
+$('tsServe')?.addEventListener('click', async () => {
+  try { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); }
+  catch (err) { toast(friendlyErr(err, "Tailnet serve failed"), 'e'); }
+  refreshTunnel();
+});
 $('tsFunnel')?.addEventListener('click', async () => {
   if (!confirm("Funnel publishes this PC to the public internet. Continue?")) return;
-  await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); refreshTunnel();
+  if (!needsNet()) return;
+  try { await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); }
+  catch (err) { toast(friendlyErr(err, "Funnel failed"), 'e'); }
+  refreshTunnel();
 });
-$('tsOff')?.addEventListener('click', async () => { await window.mcp?.tailscaleOff(); refreshTunnel(); });
+$('tsOff')?.addEventListener('click', async () => {
+  try { await window.mcp?.tailscaleOff(); toast('Tailnet serve stopped', 's'); }
+  catch (err) { toast(friendlyErr(err, "Couldn't stop tailnet serve"), 'e'); }
+  refreshTunnel();
+});
 $('dashSwitch')?.addEventListener('change', async e => {
   await window.mcp?.dashSet(e.target.checked);
   toast(e.target.checked ? "Dashboard on" : "Dashboard off", 's');
@@ -1304,16 +1349,19 @@ $('sDash')?.addEventListener('change', async e => {
 // ── Setup-tab toggles + actions (mirror the Overview controls) ──────────────
 $('suRelaySwitch')?.addEventListener('change', async e => {
   const on = e.target.checked;
+  if (on && !needsNet()) { e.target.checked = !on; return; }
   try {
     await window.mcp?.relaySet(on);
     toast(on ? "Relay on — dialing" : "Relay off — direct-only", 's');
-  } catch { toast("Relay toggle failed", 'e'); e.target.checked = !on; }
+  } catch (err) { toast(friendlyErr(err, "Relay toggle failed"), 'e'); e.target.checked = !on; }
   if (document.querySelector('#pg-setup.on')) renderSetup();
 });
 $('suTunSwitch')?.addEventListener('change', e => setTunMode(e.target.checked ? lastTunMode : 'off'));
 $('suTsSwitch')?.addEventListener('change', async e => {
-  if (e.target.checked) { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); }
-  else { await window.mcp?.tailscaleOff(); toast('Tailnet serve stopped', 's'); }
+  try {
+    if (e.target.checked) { await window.mcp?.tailscaleServe(false); toast('Tailnet serve requested', 's'); }
+    else { await window.mcp?.tailscaleOff(); toast('Tailnet serve stopped', 's'); }
+  } catch (err) { toast(friendlyErr(err, "Tailnet switch failed"), 'e'); e.target.checked = !e.target.checked; }
   refreshTunnel();
 });
 $('suDashSwitch')?.addEventListener('change', async e => {
@@ -1325,7 +1373,10 @@ $('btnSuRetry')?.addEventListener('click', retryRelayConn);
 $('btnSuWizard')?.addEventListener('click', () => wizOpen());
 $('btnSuFunnel')?.addEventListener('click', async () => {
   if (!confirm("Funnel publishes this PC to the public internet. Continue?")) return;
-  await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); refreshTunnel();
+  if (!needsNet()) return;
+  try { await window.mcp?.tailscaleServe(true); toast('Funnel requested', 's'); }
+  catch (err) { toast(friendlyErr(err, "Funnel failed"), 'e'); }
+  refreshTunnel();
 });
 $('btnChoiceQuick')?.addEventListener('click', () => setTunMode('quick'));
 $('btnChoiceCustom')?.addEventListener('click', () => wizOpen());
@@ -1363,8 +1414,10 @@ async function wizRender() {
       wizShow(`<div class="step"><span class="step-n">1</span><span class="step-t">Install the Cloudflare connector (one click, winget).</span></div><div class="ccard-foot"><button class="button primary" id="wizInstall">Install cloudflared</button></div>`);
       $('wizInstall')?.addEventListener('click', async () => {
         toast('Installing — this takes a minute…');
-        const r = await window.mcp?.tunnelInstall();
-        if (r && r.ok) { wizStep = 1; wizRender(); } else toast((r && (r.hint || r.error)) || "Install failed", 'e');
+        try {
+          const r = await window.mcp?.tunnelInstall();
+          if (r && r.ok) { wizStep = 1; wizRender(); } else toast(friendlyErr(r && (r.hint || r.error), "Install failed"), 'e');
+        } catch (err) { toast(friendlyErr(err, "Install failed"), 'e'); }
       });
       if (next) next.style.display = "none";
     } else if (!t.loginDone) { wizStep = 1; wizRender(); }
@@ -1388,16 +1441,24 @@ async function wizRender() {
   } else if (wizStep === 2) {
     wizShow(`<div class="step"><span class="step-n">3</span><span class="step-t">Logged in. Create the tunnel (reuses it if it exists).</span></div>`);
     if (next) { next.disabled = true; next.textContent = "Creating…"; }
-    const r = await window.mcp?.tunnelCreate("pc-control");
-    if (r && r.ok) { wizStep = 3; wizRender(); }
-    else { wizShow(`Setup stopped: ${esc((r && r.error) || "create failed")}. Press Next to retry.`); }
+    try {
+      const r = await window.mcp?.tunnelCreate("pc-control");
+      if (r && r.ok) { wizStep = 3; wizRender(); }
+      else { wizShow(`Setup stopped: ${esc(friendlyErr(r && r.error, "create failed"))}. Press Next to retry.`); }
+    } catch (err) { wizShow(`Setup stopped: ${esc(friendlyErr(err, "create failed"))}. Press Next to retry.`); }
   } else if (wizStep === 3) {
     wizShow(`<div class="step"><span class="step-n">4</span><span class="step-t">Which address should reach this PC?</span></div><div class="sr"><input class="inp" id="wizHost" placeholder="mcp.yourdomain.com"></div>`);
   } else {
     wizShow(`<div class="step"><span class="step-n">✓</span><span class="step-t">Custom domain live. Flip Tunnel mode to Custom domain to use it.</span></div><div class="ccard-foot"><button class="button primary" id="wizUse">Use custom domain now</button><button class="button" id="wizForget">Forget token</button></div>`);
     if (next) next.style.display = "none";
-    $('wizUse')?.addEventListener('click', async () => { await window.mcp?.tunnelSetMode("custom"); wizClose(); refreshTunnel(); toast("Custom tunnel active", 's'); });
-    $('wizForget')?.addEventListener('click', async () => { await window.mcp?.tunnelForget(); wizClose(); refreshTunnel(); });
+    $('wizUse')?.addEventListener('click', async () => {
+      try { await window.mcp?.tunnelSetMode("custom"); wizClose(); refreshTunnel(); toast("Custom tunnel active", 's'); }
+      catch (err) { toast(friendlyErr(err, "Couldn't switch tunnel mode"), 'e'); }
+    });
+    $('wizForget')?.addEventListener('click', async () => {
+      try { await window.mcp?.tunnelForget(); wizClose(); refreshTunnel(); }
+      catch (err) { toast(friendlyErr(err, "Couldn't forget the token"), 'e'); }
+    });
   }
 }
 
@@ -1408,13 +1469,15 @@ $('btnTunWizNext')?.addEventListener('click', async () => {
   if (wizStep === 2) { wizRender(); return; }
   if (wizStep === 3) {
     const host = ($('wizHost')?.value || "").trim().toLowerCase();
-    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/i.test(host) || host.includes("..")) { toast("Bare hostname only", 'e'); return; }
+    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/i.test(host) || host.includes("..")) { toast("That doesn't look like a plain address — e.g. mcp.yourdomain.com", 'e'); return; }
     const next = $('btnTunWizNext');
     if (next) { next.disabled = true; next.textContent = "Routing…"; }
-    const r = await window.mcp?.tunnelRoute(host);
+    try {
+      const r = await window.mcp?.tunnelRoute(host);
+      if (r && r.ok) { wizStep = 4; wizRender(); }
+      else toast(friendlyErr(r && r.error, "Route failed"), 'e');
+    } catch (err) { toast(friendlyErr(err, "Route failed"), 'e'); }
     if (next) { next.disabled = false; next.textContent = "Next"; }
-    if (r && r.ok) { wizStep = 4; wizRender(); }
-    else toast((r && r.error) || "Route failed", 'e');
     return;
   }
   wizStep++;
@@ -1488,7 +1551,7 @@ $('btnSave')?.addEventListener('click', async () => {
     if (m) { m.textContent='Saved'; setTimeout(()=>m.textContent='',2200); }
     toast('Settings saved and synced to the relay', 's');
   } catch (error) {
-    toast(error?.message || 'Settings could not be saved', 'e');
+    toast(friendlyErr(error, 'Settings could not be saved'), 'e');
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = 'Save settings';

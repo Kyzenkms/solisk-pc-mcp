@@ -400,6 +400,18 @@ function startServer(cfg) {
       health.serverMetrics = { memBytes: msg.memBytes || 0, cpuPct: msg.cpuPct || 0, at: Date.now() };
       return;
     }
+    if (msg.type === "relay-retry") {
+      // HTTP operator path (CLI `relay retry`, browser console): same redial
+      // as the in-app Retry button. Answers are polled via status, not IPC.
+      addLog("Relay retry requested via HTTP", "info", { category: "CONN" });
+      relayRetryCount = 0;
+      relayError = null;
+      isInternetOffline = false;
+      stopRelay();
+      startRelay(loadConfig());
+      sendStatus();
+      return;
+    }
     if (msg.type === "shell_approval_req") {
       if (win && !win.isDestroyed()) {
         win.webContents.send("shell-approval-req", msg);

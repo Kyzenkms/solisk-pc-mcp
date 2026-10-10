@@ -454,6 +454,7 @@ async function startHttp(port) {
 
   // ── Status endpoint — requires auth ─────────────────────────────────────────
   app.get("/status", apiKeyMiddleware, (req, res) => {
+    const domain = (config.relay_domain || "mcp.solisk.org").replace(/^https?:\/\//, "");
     res.json({
       status: "running",
       version: RUNTIME_VERSION,
@@ -463,6 +464,7 @@ async function startHttp(port) {
       uptime_seconds: Math.floor(process.uptime()),
       port: config.port || 3000,
       approval: config.permission_mode || "always",
+      relayUrl: config.relay_enabled === false || !config.name ? null : `https://${domain}/mcp/${config.name}`,
     });
   });
 
@@ -493,6 +495,21 @@ async function startHttp(port) {
   app.post("/tailscale/off", apiKeyMiddleware, ownerGate, (req, res) => {
     tailsvc().tailscaleOff();
     res.json({ ok: true, state: tailsState() });
+  });
+
+  // Relay redial. The socket lives in the Electron shell (or a headless
+  // relay-client), so: ask the parent first, fall back to local client.
+  app.post("/relay/retry", apiKeyMiddleware, ownerGate, (req, res) => {
+    try {
+      if (typeof process.send === "function") {
+        process.send({ type: "relay-retry" });
+        return res.json({ ok: true, via: "shell" });
+      }
+    } catch {}
+    try {
+      const ok = require("./lib/relay-client").retryRelay();
+      return res.json({ ok, via: "local" });
+    } catch { return res.json({ ok: false }); }
   });
 
   // Full desktop GUI in the browser: same renderer, HTTP shim, no Electron.

@@ -52,3 +52,5 @@ skills/
 # Personal runtime backups (may contain generated API keys)
 config-backups/
 cutof mhtcet/
+
+devices.json
