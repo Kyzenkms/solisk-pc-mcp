@@ -8,7 +8,7 @@ set -euo pipefail
 #
 #  Usage:
 #    ssh root@YOUR_VPS
-#    bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"
+#    bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/master/self-hosted-setup/vps/install.sh)"
 #
 #  Output:
 #    - A <device-name> and <api-key> you paste into the Windows desktop app.
@@ -456,7 +456,7 @@ PKGJSON
 # ── Copy relay source files ───────────────────────────────────────────────────
 # Branch is overridable for forks: REPO_BRANCH=main bash install.sh
 REPO_BRANCH="${REPO_BRANCH:-master}"
-REPO_RAW="https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/${REPO_BRANCH}/relay-server"
+REPO_RAW="https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/${REPO_BRANCH}/relay-server"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RELAY_SRCS=""
 for candidate in "$SCRIPT_DIR/relay" "$SCRIPT_DIR/../../relay-server"; do

@@ -1,7 +1,7 @@
 ﻿# Solisk PC Control MCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/kyzenkms/pc-control-mcp/releases)
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/Kyzenkms/solisk-pc-mcp/releases)
 
 Production-grade Model Context Protocol (MCP) server providing AI assistants with full, secure control over a Windows host machine. Exposes 96 system automation tools across filesystem, process execution, UI automation, system telemetry, network diagnostics, and git workflows.
 
@@ -41,10 +41,11 @@ Works out of the box with **Claude Desktop**, **Cursor**, **Cline**, **ChatGPT C
 - **Node.js:** `>= 22.5.0` (bundled inside Desktop Installer)
 
 ### 1. Download & Install
-Download the latest Windows installer from [Releases](https://github.com/kyzenkms/pc-control-mcp/releases):
+Download the latest Windows installer from [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases):
 ```
-PC Control MCP Setup 1.0.0.exe
+PC Control MCP 1.0.0.msi
 ```
+Prefer the classic installer? `PC Control MCP Setup 1.0.0.exe` is attached to the same release. Headless users can also install it from the CLI: `pc-control gui setup --installer <path-to-.msi>`.
 
 ### 2. Configuration & Approval Modes
 On first launch, configure your connection settings:

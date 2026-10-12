@@ -1387,6 +1387,43 @@ $('btnSuOpenDash')?.addEventListener('click', async () => {
   catch { toast('Could not open dashboard', 'e'); }
 });
 
+// ── App updates ─────────────────────────────────────────────────────────────
+let _updInfo = null;
+function showUpdate(info) {
+  _updInfo = info;
+  const t = $('updTitle'), n = $('updNotes');
+  if (t) t.textContent = `Update available — v${info.latest} (you have v${info.current})`;
+  if (n) n.textContent = info.notes || "A newer version is ready.";
+  $('btnUpdLater').style.display = info.mandatory ? "none" : "";
+  $('btnUpdSkip').style.display = info.mandatory ? "none" : "";
+  $('modal-update')?.classList.add('show');
+  setTimeout(() => $('btnUpdGet')?.focus(), 50);
+}
+window.mcp?.onUpdateAvailable?.((info) => { if (info && info.latest) showUpdate(info); });
+$('btnUpdLater')?.addEventListener('click', () => $('modal-update')?.classList.remove('show'));
+$('btnUpdSkip')?.addEventListener('click', async () => {
+  if (_updInfo) await window.mcp?.skipUpdate?.(_updInfo.latest);
+  $('modal-update')?.classList.remove('show');
+  toast("Skipped — we'll remind you about the next one", 's');
+});
+$('btnUpdGet')?.addEventListener('click', async () => {
+  if (_updInfo) try { await window.mcp?.openUrl?.(_updInfo.url); } catch {}
+  $('modal-update')?.classList.remove('show');
+});
+
+$('btnCheckUpd')?.addEventListener('click', async () => {
+  const btn = $('btnCheckUpd');
+  btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const info = await window.mcp?.checkUpdates?.();
+    const line = $('updLine');
+    if (info && info.latest) { /* popup shows itself */ }
+    else if (line) line.textContent = "You're up to date.";
+    if (!info || !info.latest) toast("You're up to date ✓", 's');
+  } catch { toast(friendlyErr(null, "Couldn't check for updates"), 'e'); }
+  btn.disabled = false; btn.textContent = "Check now";
+});
+
 // ── Custom-domain wizard ────────────────────────────────────────────────────
 let wizStep = 0, wizTimer = null;
 

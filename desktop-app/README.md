@@ -4,7 +4,7 @@ Electron-based GUI for PC Control MCP.
 
 ## Install
 
-Download from [Releases](https://github.com/Kyzenkms/solisk-mcp/releases).
+Download from [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases).
 Run `PC Control MCP Setup 1.0.0-beta.exe`.
 
 ## First run

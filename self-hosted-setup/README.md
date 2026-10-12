@@ -40,7 +40,7 @@ apk add --no-cache bash curl
 
 2. Download and run the install script:
    ```sh
-   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-mcp/master/self-hosted-setup/vps/install.sh)"
+   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/master/self-hosted-setup/vps/install.sh)"
    ```
    
    Or copy `vps/install.sh` to the VPS and run it:

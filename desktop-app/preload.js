@@ -42,4 +42,7 @@ contextBridge.exposeInMainWorld("mcp", {
   tailscaleServe:   (f) => ipcRenderer.invoke("tailscale-serve", f),
   tailscaleOff:     () => ipcRenderer.invoke("tailscale-off"),
   dashSet:          (e) => ipcRenderer.invoke("dash-set", e),
+  onUpdateAvailable: (fn) => { ipcRenderer.on("update-available", (_, d) => fn(d)); },
+  checkUpdates:     () => ipcRenderer.invoke("check-updates-now"),
+  skipUpdate:       (v) => ipcRenderer.invoke("skip-update", v),
 });

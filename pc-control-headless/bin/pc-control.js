@@ -704,7 +704,7 @@ async function cmdGui(args, config, target) {
     const g = detectGuiInstall();
     if (!g.installed) {
       console.error(`${yellow("▲")} GUI ${bold("not installed")} on this machine.`);
-      console.error(`  install  ${cyan("pc-control gui setup --installer <path-to-setup-exe>")}`);
+      console.error(`  install  ${cyan("pc-control gui setup --installer <path-to-setup.exe|.msi>")}`);
     } else {
       console.error(`${green("●")} GUI ${bold("installed")}  ${cyan(g.displayName || "PC Control MCP")} ${dim("v" + (g.version || "?"))}`);
       console.error(`  path     ${cyan(g.dir)}`);
@@ -739,12 +739,18 @@ async function cmdGui(args, config, target) {
     if (!installer || !fs.existsSync(installer)) {
       console.error(red("✖") + " no installer found. Pass it explicitly:");
       console.error(`  ${cyan("pc-control gui setup --installer \"C:\\path\\to\\PC Control MCP Setup 1.0.0.exe\"")}`);
+      console.error(`  ${cyan("pc-control gui setup --installer \"C:\\path\\to\\PC Control MCP 1.0.0.msi\"")}`);
       process.exit(2);
     }
-    console.error(`installing GUI from ${cyan(installer)} ${dim("(silent, one launch)")}…`);
+    const isMsi = /\.msi$/i.test(installer);
+    console.error(`installing GUI from ${cyan(installer)} ${dim(isMsi ? "(msiexec, quiet)" : "(silent, one launch)")}…`);
     try {
       const { execFileSync } = require("child_process");
-      execFileSync(installer, ["/S"], { timeout: 5 * 60 * 1000, stdio: "ignore", windowsHide: true });
+      if (isMsi) {
+        execFileSync("msiexec.exe", ["/i", installer, "/qn", "/norestart"], { timeout: 5 * 60 * 1000, stdio: "ignore", windowsHide: true });
+      } else {
+        execFileSync(installer, ["/S"], { timeout: 5 * 60 * 1000, stdio: "ignore", windowsHide: true });
+      }
     } catch (err) {
       console.error(red("✖") + ` installer failed: ${err.message}`);
       process.exit(1);

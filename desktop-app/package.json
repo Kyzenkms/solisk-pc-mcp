@@ -24,7 +24,8 @@
     "forceCodeSigning": false,
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "msi"
       ],
       "icon": "assets/icon.ico",
       "signAndEditExecutable": true
@@ -35,6 +36,13 @@
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "msi": {
+      "upgradeCode": "a62da5de-6cee-4b0a-a037-4f377186a61e",
+      "oneClick": false,
+      "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },

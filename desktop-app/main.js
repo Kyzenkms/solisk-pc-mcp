@@ -1573,6 +1573,59 @@ app.whenReady().then(() => {
   createTray();
   // NOTE: startServer/Tunnel/Relay is called inside dom-ready (createWindow),
   // so we do NOT call them again here to avoid double-spawn.
+  setTimeout(() => checkForUpdates(false), 45000);
+  setInterval(() => checkForUpdates(false), 6 * 3600 * 1000);
+});
+
+// ── App updates ─────────────────────────────────────────────────────────────
+// A tiny version feed (website/app-version.json) drives an in-app popup.
+// Offline or feed-down = silent. Never blocks startup, never auto-installs.
+let APP_VERSION = "1.0.0";
+try { APP_VERSION = require("./package.json").version || APP_VERSION; } catch {}
+
+function cmpVersions(a, b) {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+async function checkForUpdates(manual) {
+  let cfg = {};
+  try { cfg = loadConfig(); } catch {}
+  if (cfg.update_check === false && !manual) return null;
+  const feedUrl = cfg.update_url || "https://solisk.org/app-version.json";
+  let feed = null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch {} }, 15000);
+    const r = await fetch(feedUrl, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    feed = await r.json();
+  } catch { return null; }
+  const latest = String((feed && feed.latest) || "").trim();
+  if (!latest || cmpVersions(latest, APP_VERSION) <= 0) return null;
+  const info = {
+    current: APP_VERSION, latest,
+    notes: String((feed && feed.notes) || ""),
+    url: String((feed && feed.url) || "https://solisk.org/#download"),
+    mandatory: !!(feed && feed.mandatory),
+  };
+  if (!manual && cfg.skipped_update === latest) return null;
+  if (win && !win.isDestroyed()) {
+    try { win.webContents.send("update-available", info); } catch {}
+  }
+  return info;
+}
+
+ipcMain.handle("check-updates-now", async () => await checkForUpdates(true));
+ipcMain.handle("skip-update", async (_, version) => {
+  const cfg = loadConfig();
+  saveConfig({ ...cfg, skipped_update: String(version || "") });
+  return true;
 });
 
 app.on("window-all-closed", () => {});
