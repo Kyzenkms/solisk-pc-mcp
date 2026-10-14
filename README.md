@@ -14,11 +14,11 @@
 
 *Desktop control room · Headless CLI · Cloud relay · Custom domains · Tailnet*
 
-[⬇ Download MSI](#-install) ·
-[⚡ 60-second connect](#-connect-an-ai-in-60-seconds) ·
-[🖥 OS support](#-os-support) ·
-[🏠 Self-host](#-self-host-the-relay) ·
-[❓ FAQ](#-faq)
+[Download MSI](#-install) ·
+[60-second connect](#-connect-an-ai-in-60-seconds) ·
+[OS support](#-os-support) ·
+[Self-host](#-self-host-the-relay) ·
+[FAQ](#-faq)
 
 </div>
 
@@ -29,7 +29,7 @@
 > **One product, three faces, one runtime per machine.** An AI connects with your MCP URL, approves once, and calls tools. You watch every session, toggle every path, revoke anything.
 
 <details open>
-<summary><b>🧭 Which face do I need?</b></summary>
+<summary><b><img src="assets/brand/icons/layers.svg" width="18" height="18" alt=""> Which face do I need?</b></summary>
 <br>
 
 | You are… | Use | Get started |
@@ -42,7 +42,7 @@
 
 ---
 
-## ⬇ Install
+## <img src="assets/brand/icons/download.svg" width="22" height="22" alt=""> Install
 
 <details open>
 <summary><b>Windows (MSI first)</b></summary>
@@ -70,7 +70,7 @@ node build-msi.js             # MSI (release day only — slow)
 
 ---
 
-## ⚡ Connect an AI in 60 seconds
+## <img src="assets/brand/icons/bolt.svg" width="22" height="22" alt=""> Connect an AI in 60 seconds
 
 ```mermaid
 flowchart LR
@@ -88,7 +88,7 @@ flowchart LR
 
 ---
 
-## 🖥 OS support
+## <img src="assets/brand/icons/monitor.svg" width="22" height="22" alt=""> OS support
 
 | OS | GUI | CLI (`solisk`) | MCP URL clients | Tools |
 |:---|:---:|:---:|:---:|---|
@@ -100,7 +100,7 @@ Windows-only automation (mouse/keyboard hooks, screenshots, native dialogs) stay
 
 ---
 
-## ✨ Highlights
+## <img src="assets/brand/icons/sparkles.svg" width="22" height="22" alt=""> Highlights
 
 <details open>
 <summary><b>Four paths in, four switches</b></summary>
@@ -131,7 +131,7 @@ Hosted relay · Cloudflare tunnel (quick or your domain) · Tailnet · Web dashb
 
 ---
 
-## 🛠 CLI reference
+## <img src="assets/brand/icons/terminal.svg" width="22" height="22" alt=""> CLI reference
 
 `solisk` is the short name (`pc-control` works everywhere).
 
@@ -179,7 +179,7 @@ Every attach command works with zero flags next to a running GUI.
 
 ---
 
-## 🧭 Architecture
+## <img src="assets/brand/icons/layers.svg" width="22" height="22" alt=""> Architecture
 
 ```mermaid
 flowchart TB
@@ -200,7 +200,7 @@ flowchart TB
 
 ---
 
-## 🔒 Security model
+## <img src="assets/brand/icons/lock.svg" width="22" height="22" alt=""> Security model
 
 | # | Guarantee | How |
 |:---:|---|---|
@@ -215,7 +215,7 @@ Full policy: [SECURITY.md](SECURITY.md) · Found something? [Security advisory](
 
 ---
 
-## 🏠 Self-host the relay
+## <img src="assets/brand/icons/home.svg" width="22" height="22" alt=""> Self-host the relay
 
 <details open>
 <summary><b>One command, Docker or PM2</b></summary>
@@ -232,7 +232,7 @@ Pick domain type (yours / `sslip.io` testing), then runtime (Docker / PM2). It p
 
 ---
 
-## 🧪 Verify it
+## <img src="assets/brand/icons/check.svg" width="22" height="22" alt=""> Verify it
 
 ```bash
 cd relay-server && node --test test/oauth.test.js   # OAuth regression suite
@@ -242,7 +242,7 @@ solisk doctor                                        # this machine — 0 failin
 
 ---
 
-## ❓ FAQ
+## <img src="assets/brand/icons/question.svg" width="22" height="22" alt=""> FAQ
 
 <details open>
 <summary><b>SmartScreen warns on install</b></summary>
