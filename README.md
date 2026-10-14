@@ -4,156 +4,225 @@
 
 # Solisk PC Control MCP
 
-**Give trusted AI clients secure control of your Windows PC.**
+### Give trusted AI clients secure control of your Windows PC.
 
 [![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-emerald.svg)](https://github.com/Kyzenkms/solisk-pc-mcp/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4.svg)](#os-support)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4.svg)](#-os-support)
 [![MCP](https://img.shields.io/badge/MCP-streamable_http-teal.svg)](https://modelcontextprotocol.io)
-[![OAuth 2.1 + PKCE](https://img.shields.io/badge/auth-OAuth_2.1_%2B_PKCE-lime.svg)](#security-model)
+[![OAuth 2.1 + PKCE](https://img.shields.io/badge/auth-OAuth_2.1_%2B_PKCE-lime.svg)](#-security-model)
 
 *Desktop control room · Headless CLI · Cloud relay · Custom domains · Tailnet*
 
-[Download MSI](#-install) · [60-second connect](#-connect-an-ai-in-60-seconds) · [Self-host](#-self-host-the-relay) · [Security](#-security-model)
+[⬇ Download MSI](#-install) ·
+[⚡ 60-second connect](#-connect-an-ai-in-60-seconds) ·
+[🖥 OS support](#-os-support) ·
+[🏠 Self-host](#-self-host-the-relay) ·
+[❓ FAQ](#-faq)
 
 </div>
 
 ---
 
-## What this is
+> **One product, three faces, one runtime per machine.** An AI connects with your MCP URL, approves once, and calls tools. You watch every session, toggle every path, revoke anything.
 
-One product, three faces, one runtime per machine:
+<details open>
+<summary><b>🧭 Which face do I need?</b></summary>
+<br>
 
-| Face | What | For |
+| You are… | Use | Get started |
 |---|---|---|
-| **Control room** (Electron GUI) | Setup, endpoints, health, keys, tunnels — no terminal needed | Daily driving on Windows |
-| **CLI** (`solisk` / `pc-control`) | Same core over HTTP + stdio, onboarding wizard, `doctor`, tunnels, devices | VPS, homelab, automation |
-| **Web dashboard** (`/app`) | The full GUI in a browser — local or over your tailnet, key-locked, remember-this-device | Phones, tablets, second machines |
+| On Windows, want clicks not terminals | **Control room** (Electron GUI) | [Install](#-install) |
+| On a VPS / homelab / automation | **CLI** (`solisk`) | `solisk setup` then `solisk doctor` |
+| On a phone, tablet, second machine | **Web dashboard** (`/app`) | Local `:3000/app` or tailnet URL, key once, tick *Remember* |
 
-An AI connects with your **MCP URL** (`https://mcp.solisk.org/mcp/<room>` or your own domain), approves once on the consent page, and calls tools. You watch every session, toggle every path, revoke anything.
+</details>
 
 ---
 
-## 🚀 Install
+## ⬇ Install
 
-**Windows** — grab **`PC Control MCP 1.0.0.msi`** from [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases) and run it. (Classic `Setup .exe` attached to the same release. Unsigned build — SmartScreen asks once: *More info → Run anyway*.)
+<details open>
+<summary><b>Windows (MSI first)</b></summary>
+<br>
 
-Headless install from the CLI afterwards also works:
+1. Download **`PC Control MCP 1.0.0.msi`** from [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases) and run it.
+2. Classic `Setup .exe` rides along in the same release. Unsigned build → SmartScreen asks once: *More info → Run anyway*.
+3. Headless later? `solisk gui setup --installer <path-to-.msi>` does it from the terminal.
 
-```powershell
-solisk gui setup --installer "C:\path\to\PC Control MCP 1.0.0.msi"
-```
+</details>
 
-**From source** (contributors):
+<details>
+<summary><b>From source (contributors)</b></summary>
+<br>
 
 ```powershell
 git clone https://github.com/Kyzenkms/solisk-pc-mcp.git
 cd solisk-pc-mcp\desktop-app
 npm install
-npm run build:unsigned-beta   # NSIS installer
+npm run build:unsigned-beta   # NSIS installer (daily path, fast)
 node build-msi.js             # MSI (release day only — slow)
 ```
+
+</details>
 
 ---
 
 ## ⚡ Connect an AI in 60 seconds
 
-1. Open the app → **Setup** → copy your **MCP URL**.
-2. In Claude.ai / ChatGPT, add an MCP connector with that URL.
-3. Approve on the consent page with your room API key. Done — reconnects later need no re-auth.
+```mermaid
+flowchart LR
+    A[Copy MCP URL<br/>from Setup] --> B[Paste as connector<br/>in Claude / ChatGPT]
+    B --> C[Approve once<br/>consent + room key]
+    C --> D[Calling tools.<br/>Reconnects need no re-auth.]
+    style D fill:#4fd1b5,color:#03211b
+```
 
-> First connect ever fails? Remove the connector and re-add it — Claude caches failed discovery. The relay logs every OAuth step, so a screenshot of any error is enough to diagnose.
+> **First connect fails, retry works?** Claude cached a failed discovery. Remove + re-add the connector once — consent then appears directly.
 
 ---
 
-## 🖥️ OS support
+## 🖥 OS support
 
 | OS | GUI | CLI (`solisk`) | MCP URL clients | Tools |
-|---|---|---|---|---|
+|:---|:---:|:---:|:---:|---|
 | **Windows 10/11 x64** | ✅ full control room | ✅ | ✅ local + relay + tunnel | **97** native |
-| **Linux** | ❌ (CLI + web dashboard) | ✅ server, stdio, tunnels, Tailscale | ✅ | 45 portable + `shell_exec` shim |
-| **macOS** | ❌ (CLI + web dashboard) | ✅ server, stdio | ✅ | 45 portable + `shell_exec` shim |
+| **Linux** | ❌ → CLI + web dashboard | ✅ server · stdio · tunnels · Tailscale | ✅ | 45 portable + `shell_exec` |
+| **macOS** | ❌ → CLI + web dashboard | ✅ server · stdio | ✅ | 45 portable + `shell_exec` |
 
-Windows-only tools (mouse/keyboard hooks, screenshots, native dialogs) stay off elsewhere; everything portable stays on. The relay, tunnels, OAuth, keys, remembered devices, and update checks behave identically on all three.
+Windows-only automation (mouse/keyboard hooks, screenshots, native dialogs) stays off elsewhere; everything portable stays on. Relay, tunnels, OAuth, keys, remembered devices, sessions, update checks — **identical on all three**.
 
 ---
 
 ## ✨ Highlights
 
-- **Four paths in, four switches** — hosted relay, Cloudflare tunnel (quick or your domain), tailnet, web dashboard. Each toggles live from Setup; the dashboard toggle kills `/app` + `/dashboard` entirely (404), not just Tailnet.
-- **Sessions counted honestly** — one live AI reads `1`. Idle ghosts expire, counts refresh live everywhere (GUI, CLI, API).
-- **Remembered devices** — tick *Remember this device* on the console key gate; the browser skips the key for 30 days. Revoke anytime: `solisk devices list` / `solisk devices revoke <id>`.
-- **No-internet mode** — the app says so plainly, keeps everything local working, and redials on its own. Errors are sentences, not stack traces.
-- **Update popups** — new release? The app tells you, with notes and a download button. Skip-a-version supported.
-- **CLI/GUI never fight** — one runtime per machine. The CLI attaches to a running GUI (borrowing its key transparently) and refuses to boot a second server over it.
+<details open>
+<summary><b>Four paths in, four switches</b></summary>
+<br>
+
+Hosted relay · Cloudflare tunnel (quick or your domain) · Tailnet · Web dashboard. Each toggles **live** from Setup. The dashboard toggle kills `/app` + `/dashboard` entirely (`404`), not just Tailnet.
+
+</details>
+
+<details>
+<summary><b>Sessions counted honestly · Remembered devices · Offline-first</b></summary>
+<br>
+
+- One live AI reads `1`. Idle ghosts expire after 10 minutes; every surface (GUI, CLI, API) reads the live count.
+- Tick *Remember this device* on the console key gate → 30 days keyless. `solisk devices list` / `solisk devices revoke <id>` from anywhere.
+- No internet? The app says so plainly, everything local keeps working, remote redials itself. Errors are sentences, never stack traces.
+
+</details>
+
+<details>
+<summary><b>Updates & no-fight guarantee</b></summary>
+<br>
+
+- New release → in-app popup with notes + download (skip-a-version supported, mandatory releases can't be skipped).
+- CLI and GUI never fight: one runtime per machine. The CLI attaches to a running GUI — borrowing its key transparently — and refuses to boot a second server over it.
+
+</details>
 
 ---
 
-## 🛠️ CLI reference
+## 🛠 CLI reference
 
-`solisk` is the short name (`pc-control` still works everywhere).
+`solisk` is the short name (`pc-control` works everywhere).
+
+<details open>
+<summary><b>Daily commands</b></summary>
+<br>
 
 ```
-solisk dashboard [--no-open]      open the web console for the running server
-solisk doctor [--fix]             11 health checks: ports, keys, relay, tunnel, versions
+solisk dashboard [--no-open]      web console for the running server
+solisk doctor [--fix]             11 health checks — 0 failing is the goal
+solisk logs [--lines N]           live server log, whichever face owns it
+solisk setup                      step-by-step onboarding wizard
+solisk backup                     config snapshot for restores
+```
+
+</details>
+
+<details>
+<summary><b>Access control</b></summary>
+<br>
+
+```
 solisk config get|set|validate    ports, modes, domains (secrets refused — see rotate-key)
 solisk rotate-key                 new owner key, zero-downtime relay rotation
-solisk logs [--lines N]           live server log, whichever face owns it
-solisk backup                     config snapshot for restores
-solisk gui status|setup           detect install, install from .exe or .msi
-solisk setup                      step-by-step onboarding wizard
 solisk keys list|add|revoke       scoped client keys (fail-closed defaults)
 solisk devices list|revoke        remembered browsers (the key-gate cookie)
 solisk relay status|retry         room state, redial (reaches the GUI socket too)
-solisk tunnel off|quick|custom    + login, create, route, forget, status
-solisk tailscale status|serve|off funnel is a deliberate, confirmed act
 ```
 
-Every attach command works with zero flags next to a running GUI — no `--config` archaeology.
+</details>
+
+<details>
+<summary><b>Exposure</b></summary>
+<br>
+
+```
+solisk tunnel off|quick|custom    + login, create, route, forget, status
+solisk tailscale status|serve|off funnel is deliberate and confirmed
+solisk gui status|setup           detect install, install from .exe or .msi
+```
+
+Every attach command works with zero flags next to a running GUI.
+
+</details>
 
 ---
 
 ## 🧭 Architecture
 
-```
-AI client (Claude.ai / ChatGPT / Cursor / VS Code)
-   |  MCP URL + OAuth 2.1 (PKCE S256, RFC 8707 resource binding)
-   v
-Cloud relay  ── rooms, tokens, rate limits (scrypt-hashed keys)
-   |  one outbound WebSocket per PC (room takeover protected)
-   v
-Your machine ── StreamableHTTP :3000 ── 97 tools, 5 sessions max
-   |  + Cloudflare tunnel (quick or your domain)
-   +-- tailnet serve (private dashboard) / web dashboard (/app)
+```mermaid
+flowchart TB
+    AI["AI client<br/>Claude.ai / ChatGPT / Cursor"]
+    AI -->|MCP URL + OAuth 2.1<br/>PKCE S256, resource-bound tokens| RELAY
+    subgraph RELAY["Cloud relay"]
+        R1[rooms · tokens · rate limits<br/>scrypt-hashed keys]
+    end
+    RELAY -->|one outbound WebSocket per PC<br/>takeover-protected| PC
+    subgraph PC["Your machine :3000"]
+        P1[StreamableHTTP · 97 tools · 5 sessions max]
+        P2[Cloudflare tunnel<br/>quick or your domain]
+        P3[tailnet serve · web dashboard /app]
+    end
 ```
 
-Single source of truth per layer: one config file, one event bus, one session store. Thin faces (Electron, CLI, web shim) never own state.
+> One config file, one event bus, one session store. Thin faces (Electron, CLI, web shim) never own state.
 
 ---
 
 ## 🔒 Security model
 
-1. **Bearer-only.** Every data route needs an owner key, scoped key, OAuth token, or remembered-device cookie. Page shells are public; data never is.
-2. **Zero-trust relay.** The relay authenticates before forwarding a single byte. Wrong key → `401`, takeover attempts logged and blocked.
-3. **PKCE + exact redirect matching + resource-bound tokens.** No cross-room token reuse, ever.
-4. **Hashed at rest.** API keys are scrypt-hashed with unique salts. Device cookies store hashes, not tokens. Secrets never hit logs.
-5. **Fail closed.** Unknown session? `400`, re-initialize. Offline? Local keeps working, remote redials itself. Rate limits (300/min relay, 400/min local) + 5-session cap + idle expiry.
-6. **Destructive is deliberate.** Funnel, turbo mode, and URL regen all confirm first and say what happens.
+| # | Guarantee | How |
+|:---:|---|---|
+| 1 | **Bearer-only** | Owner key, scoped key, OAuth token, or device cookie on every data route. Shells public, data never. |
+| 2 | **Zero-trust relay** | Authenticates before forwarding one byte. Takeovers logged + blocked. |
+| 3 | **PKCE + exact redirects + bound tokens** | No cross-room token reuse, ever. |
+| 4 | **Hashed at rest** | scrypt + unique salts. Secrets never hit logs or disk plaintext. |
+| 5 | **Fail closed** | Unknown session → re-init. Offline → local works, remote redials. 300/min relay, 400/min local, 5 sessions, idle expiry. |
+| 6 | **Deliberate destruction** | Funnel, turbo, URL regen all confirm first and say what happens. |
 
-Full policy: [SECURITY.md](SECURITY.md). Found something? Open a [security advisory](https://github.com/Kyzenkms/solisk-pc-mcp/security/advisories/new), not an issue.
+Full policy: [SECURITY.md](SECURITY.md) · Found something? [Security advisory](https://github.com/Kyzenkms/solisk-pc-mcp/security/advisories/new), not an issue.
 
 ---
 
 ## 🏠 Self-host the relay
 
-Don't want our relay in the loop? Run yours — **Docker or PM2**, one command:
+<details open>
+<summary><b>One command, Docker or PM2</b></summary>
+<br>
 
 ```bash
 ssh root@YOUR_VPS
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/main/self-hosted-setup/vps/install.sh)"
 ```
 
-It asks domain type (yours / sslip.io testing) then runtime (Docker / PM2), and prints the room + key to paste into the app. Details, backups, firewall, and updates: [self-hosted-setup/README.md](self-hosted-setup/README.md).
+Pick domain type (yours / `sslip.io` testing), then runtime (Docker / PM2). It prints the room + key to paste into the app. Backups, firewall, updates: [self-hosted-setup/README.md](self-hosted-setup/README.md).
+
+</details>
 
 ---
 
@@ -161,31 +230,38 @@ It asks domain type (yours / sslip.io testing) then runtime (Docker / PM2), and 
 
 ```bash
 cd relay-server && node --test test/oauth.test.js   # OAuth regression suite
-node test-live.js                                    # end-to-end against a running server
-solisk doctor                                        # this machine, 11 checks, 0 failing is the goal
+node test-live.js                                    # end-to-end vs a running server
+solisk doctor                                        # this machine — 0 failing is the goal
 ```
 
 ---
 
 ## ❓ FAQ
 
-**SmartScreen warns on install.**
-Unsigned build — *More info → Run anyway*. Signing (EV cert) is the fix; it's budgeted, not done.
+<details open>
+<summary><b>SmartScreen warns on install</b></summary>
+<br>Unsigned build — <i>More info → Run anyway</i>. An EV certificate ends this; it's budgeted, not done.
+</details>
 
-**One AI shows N sessions.**
-Stale IDs from reconnects — they expire after 10 idle minutes. Live count is exact at connect time.
+<details>
+<summary><b>One AI shows N sessions</b></summary>
+<br>Stale IDs from reconnects — they expire after 10 idle minutes. Live count is exact at connect time.
+</details>
 
-**CLI says key refused next to a running GUI.**
-It borrows the GUI key automatically and tells you. `solisk gui status` shows both fingerprints.
+<details>
+<summary><b>CLI says key refused next to a running GUI</b></summary>
+<br>It borrows the GUI key automatically and tells you (fingerprint shown). <code>solisk gui status</code> shows both fingerprints.
+</details>
 
-**Claude's first connect fails, retry works.**
-Claude caches failed discovery. Remove + re-add the connector once; consent then appears directly.
-
-**After restart it shows 0 sessions.**
-Correct — sessions live in memory. The moment Claude re-initializes, the count appears. Grants and keys persist; nobody re-authenticates.
+<details>
+<summary><b>After restart it shows 0 sessions</b></summary>
+<br>Correct — sessions live in memory. The moment Claude re-initializes, the count appears. Grants and keys persist; nobody re-authenticates.
+</details>
 
 ---
 
-## License
+<div align="center">
 
-[MIT](LICENSE) — Solisk PC Control MCP.
+[MIT](LICENSE) — Solisk PC Control MCP · v1.0.0
+
+</div>
