@@ -4,7 +4,8 @@
   "description": "Headless CLI build of PC Control MCP — VPS-ready MCP server (stdio + StreamableHTTP), no Electron, no GUI.",
   "type": "commonjs",
   "bin": {
-    "pc-control": "./bin/pc-control.js"
+    "pc-control": "./bin/pc-control.js",
+    "solisk": "./bin/pc-control.js"
   },
   "scripts": {
     "start": "node bin/pc-control.js --mode=http",

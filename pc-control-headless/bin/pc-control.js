@@ -115,6 +115,7 @@ Usage:
   pc-control setup [--config PATH]                 # step-by-step onboarding wizard
   pc-control keys list | add <label> [--scopes s] | revoke <id|label|prefix>
   pc-control relay [status] | retry [--port 3000]
+  pc-control devices [list] | revoke <id> [--port 3000]
   pc-control tunnel [status] | off | quick | custom | login | create [name] | route <host> | forget
   pc-control tailscale [status] | serve | funnel | off
   pc-control --list-tools | --setup | --help | --version
@@ -222,6 +223,7 @@ async function main() {
     if (args.sub === "setup") return await cmdSetupWizard(config, configPath);
     if (args.sub === "keys") return cmdKeys(args, config, configPath);
     if (args.sub === "relay") return cmdRelay(args, config, target);
+    if (args.sub === "devices") return cmdDevices(args, config, target);
     if (args.sub === "tunnel") return await cmdTunnel(args, config, configPath);
     if (args.sub === "tailscale") return cmdTailscale(args, config, target);
     console.error(`Unknown command: ${args.sub} (try --help)`);
@@ -996,6 +998,47 @@ async function cmdRelay(args, config, target) {
     return;
   }
   console.error("usage: pc-control relay [status] | retry");
+  process.exit(2);
+}
+
+// ── Remembered devices (browser consoles that skipped the key gate) ───────
+async function cmdDevices(args, config, target) {
+  const [op, ...rest] = args.subArgs;
+  const api = async (path, method) => {
+    const r = await fetch(`http://${target.host}:${target.port}${path}`, {
+      method: method || "GET",
+      headers: { authorization: "Bearer " + config.api_key },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (r.status === 401 || r.status === 403) return { auth: false };
+    return await r.json().catch(() => ({}));
+  };
+  if (!op || op === "list") {
+    const d = await api("/api/devices").catch(() => null);
+    if (!d) { console.error(red("● no live runtime answering — start one first.")); process.exit(1); }
+    if (d.auth === false) { console.error(yellow("▲") + " " + keyMismatchHint()); process.exit(1); }
+    const list = Array.isArray(d.devices) ? d.devices : [];
+    if (!list.length) { console.error(dim("no remembered devices — browsers tick “Remember this device” on the key gate.")); return; }
+    console.error(bold("remembered devices") + dim(` (${list.length}/10)`));
+    const w = Math.max(...list.map((x) => String(x.id || "?").length));
+    for (const x of list) {
+      const seen = x.lastSeen ? new Date(x.lastSeen).toLocaleString() : "never";
+      console.error(`  ${green("●")} ${String(x.id).padEnd(w)}  ${dim(String(x.label || "browser").slice(0, 40))}  ${dim("last seen " + seen)}`);
+    }
+    console.error(dim("  revoke one with: devices revoke <id>"));
+    return;
+  }
+  if (op === "revoke") {
+    const id = rest.find((a) => !a.startsWith("--"));
+    if (!id) { console.error("usage: devices revoke <id>"); process.exit(2); }
+    const r = await api("/api/devices/" + encodeURIComponent(id), "DELETE").catch(() => null);
+    if (!r) { console.error(red("● no live runtime answering — start one first.")); process.exit(1); }
+    if (r.auth === false) { console.error(yellow("▲") + " " + keyMismatchHint()); process.exit(1); }
+    if (r.ok) console.error(`${green("●")} device ${bold(id)} forgotten — that browser asks for the key again.`);
+    else console.error(red("✖") + ` ${r.error || "not found"}`);
+    return;
+  }
+  console.error("usage: pc-control devices [list] | revoke <id>");
   process.exit(2);
 }
 

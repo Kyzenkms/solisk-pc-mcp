@@ -8,6 +8,7 @@
     "start": "electron .",
     "build": "electron-builder --win --x64",
     "build:unsigned-beta": "electron-builder --win --x64 -c.win.signAndEditExecutable=false && node stamp-icon.js && electron-builder --win --x64 --prepackaged dist/win-unpacked",
+    "build:msi": "node build-msi.js",
     "dev": "electron . --dev"
   },
   "build": {
@@ -24,8 +25,7 @@
     "forceCodeSigning": false,
     "win": {
       "target": [
-        "nsis",
-        "msi"
+        "nsis"
       ],
       "icon": "assets/icon.ico",
       "signAndEditExecutable": true
