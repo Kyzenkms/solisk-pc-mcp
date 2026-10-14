@@ -22,6 +22,8 @@
 
 </div>
 
+<img src="assets/brand/banners/repo-hero.png" alt="Solisk PC Control — AI clients connected to your PC through one secure relay">
+
 ---
 
 > **One product, three faces, one runtime per machine.** An AI connects with your MCP URL, approves once, and calls tools. You watch every session, toggle every path, revoke anything.
@@ -79,6 +81,10 @@ flowchart LR
 ```
 
 > **First connect fails, retry works?** Claude cached a failed discovery. Remove + re-add the connector once — consent then appears directly.
+
+| Connect | Authorize | Control |
+|:---:|:---:|:---:|
+| <img src="assets/brand/landing/step-1-connect.png" width="280" alt="Connect"> | <img src="assets/brand/landing/step-2-authorize.png" width="280" alt="Authorize"> | <img src="assets/brand/landing/step-3-control.png" width="280" alt="Control"> |
 
 ---
 
