@@ -40,7 +40,16 @@ if (!bin) { console.error("rcedit binary not found under", pkgDir); process.exit
 let done = false;
 for (let attempt = 1; attempt <= 24 && !done; attempt++) {
   try {
-    execFileSync(bin, [exe, "--set-icon", icon], { stdio: "pipe", timeout: 90000 });
+    execFileSync(bin, [exe,
+      "--set-icon", icon,
+      "--set-version-string", "ProductName", "PC Control MCP",
+      "--set-version-string", "FileDescription", "PC Control MCP",
+      "--set-version-string", "CompanyName", "Solisk",
+      "--set-version-string", "InternalName", "PC Control MCP",
+      "--set-version-string", "OriginalFilename", "PC Control MCP.exe",
+      "--set-file-version", "1.0.0.0",
+      "--set-product-version", "1.0.0.0",
+    ], { stdio: "pipe", timeout: 90000 });
     done = true;
   } catch (err) {
     console.log(`icon stamp attempt ${attempt} busy, retrying…`);

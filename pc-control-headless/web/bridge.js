@@ -29,7 +29,7 @@
       document.body.appendChild(overlay);
     }
     overlay.innerHTML = '<div style="background:#272727;border:1px solid #4a4a4a;border-radius:14px;padding:28px;max-width:380px;width:calc(100vw - 40px);font-family:system-ui"><h2 style="color:#fff;font-size:17px;margin:0 0 8px">Connect to this PC</h2><p style="color:#c9c9c9;font-size:13px;margin:0 0 16px">' + (message || "Paste the owner API key. It stays in this tab only.") + '</p><input id="pcc-key" type="password" placeholder="Owner API key" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #4a4a4a;background:#2b2b2b;color:#fff;font-size:14px"/><label style="display:flex;gap:8px;align-items:center;color:#c9c9c9;font-size:12px;margin-top:10px;cursor:pointer"><input id="pcc-remember" type="checkbox" style="accent-color:#4fd1b5"/>Remember this device (30 days)</label><button id="pcc-go" style="width:100%;margin-top:12px;padding:10px;border-radius:8px;border:0;background:#4fd1b5;color:#03211b;font-weight:700;font-size:14px;cursor:pointer">Connect</button><div id="pcc-url" style="margin-top:14px;padding-top:12px;border-top:1px solid #4a4a4a;font-size:12px;color:#929292">Fetching MCP URL…</div></div>';
-    fetch("/api/public-info", { credentials: "same-origin" }).then((r) => r.json()).then((info) => {
+    fetch("/api/public-info", { credentials: "same-origin" }).then((r) => { if (!r.ok) throw new Error("locked"); return r.json(); }).then((info) => {
       const box = overlay.querySelector("#pcc-url");
       if (!box || !info || !info.mcpUrl) return;
       box.innerHTML = "";

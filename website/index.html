@@ -5,24 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="PC Control MCP is an open-source control layer connecting trusted AI clients to Windows machines through scoped, auditable Model Context Protocol tools."
+      content="PC Control MCP connects trusted AI clients to Windows machines through scoped, auditable Model Context Protocol tools. Private beta."
     />
-    <title>PC Control MCP | The open control layer for AI and Windows</title>
+    <title>PC Control MCP | Scoped AI control for Windows</title>
     <meta name="theme-color" content="#070c0d" />
     <meta
       property="og:title"
-      content="PC Control MCP | The open control layer for AI and Windows"
+      content="PC Control MCP | Scoped AI control for Windows"
     />
     <meta
       property="og:description"
-      content="Give trusted AI clients scoped, auditable control over Windows through Model Context Protocol tools. 97 tools, local-first, MIT licensed."
+      content="Give trusted AI clients scoped, auditable control over Windows through Model Context Protocol tools. 97 tools, local-first, private beta."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://solisk.org/" />
+    <meta property="og:image" content="https://solisk.org/assets/brand-og-card.png" />
     <link rel="canonical" href="https://solisk.org/" />
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://solisk.org/assets/brand-og-card.png" />
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=101" />
     <script
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"
@@ -55,8 +57,8 @@
           ><a href="security.html">Security</a
           ><a
             class="nav-cta"
-            href="https://github.com/Kyzenkms/solisk-pc-mcp/releases"
-            >Download</a
+            href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access"
+            >Request access</a
           >
         </div>
       </nav>
@@ -64,7 +66,7 @@
     <main id="main">
       <section class="hero">
         <div class="hero-copy" data-hero>
-          <div class="eyebrow">Open source / Windows / v1.0.0</div>
+          <div class="eyebrow">Private beta / Windows / v1.0.0</div>
           <h1>Give your AI a <em>Windows machine.</em></h1>
           <p>
             One endpoint. 97 scoped tools. Local approval. Claude, ChatGPT
@@ -73,14 +75,14 @@
           <div class="hero-actions">
             <a
               class="button primary"
-              href="https://github.com/Kyzenkms/solisk-pc-mcp/releases"
+              href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access"
               ><svg viewBox="0 0 24 24">
-                <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg
-              >Download</a
+                <path d="M4 6h16v12H4zM4 7l8 6 8-6" /></svg
+              >Request access</a
             ><a class="button" href="docs.html">Read setup guide</a>
           </div>
           <div class="release-note">
-            <b>Windows 10/11 64-bit</b> · unsigned installer · MIT licensed
+            <b>Windows 10/11 64-bit</b> · invite-only beta · MIT licensed
           </div>
         </div>
         <div class="console" data-hero role="img" aria-label="Example relay session showing allowed and gated tool calls">
@@ -123,6 +125,11 @@
           <span>+ ANY MCP CLIENT</span>
         </div>
       </section>
+
+      <figure class="showcase" data-reveal>
+        <img src="assets/hero-showcase.png" alt="Your desk under scoped control — dashboard, terminal and PC in one view" loading="lazy" />
+        <figcaption>Your desk, under scoped control. The client sees tools — the machine stays yours.</figcaption>
+      </figure>
 
       <section class="section" id="tools">
         <div class="wrap">
@@ -194,6 +201,9 @@
               decides, Windows returns a structured result.
             </p>
             <a class="button" href="docs.html#connect">Connect a client</a>
+            <figure class="side-fig" data-reveal>
+              <img src="assets/step-connect.png" alt="Client plugs into the PC over one MCP connection" loading="lazy" />
+            </figure>
           </div>
           <div>
             <article class="step" data-reveal>
@@ -273,6 +283,9 @@
               scopes, boundaries, and approval mode stay visible.
             </p>
             <a class="button" href="security.html">Read security model</a>
+            <figure class="side-fig" data-reveal>
+              <img src="assets/step-authorize.png" alt="Every sensitive action gated behind visible approval" loading="lazy" />
+            </figure>
           </div>
           <dl class="sec-list">
             <div data-reveal>
@@ -298,6 +311,9 @@
       <section class="section" id="operators">
         <div class="wrap">
           <h2>Built for people who run machines.</h2>
+          <figure class="showcase slim" data-reveal>
+            <img src="assets/step-control.png" alt="Human and agent hands sharing one keyboard — you approve, it executes" loading="lazy" />
+          </figure>
           <div class="snap-row" data-reveal>
             <article class="snap-card">
               <span>DEVELOPERS</span>
@@ -323,19 +339,19 @@
       <section class="section" id="source">
         <div class="wrap oss-grid">
           <div data-reveal>
-            <h2>Inspect it. Fork it. Host it.</h2>
+            <h2>Own the whole path.</h2>
             <p>
-              Runtime, relay, scopes, and self-hosting setup are MIT source.
-              Managed hosting is optional; local and self-hosted modes stand
-              alone.
+              MIT-licensed core: local runtime, relay, scopes, and
+              self-hosting. Source opens with general availability; beta
+              testers get builds, docs, and direct support today.
             </p>
             <div class="hero-actions">
-              <a class="button primary" href="https://github.com/Kyzenkms/solisk-pc-mcp">View source</a
+              <a class="button primary" href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access">Request beta access</a
               ><a class="button" href="docs.html#self-hosting">Self-host guide</a>
             </div>
           </div>
           <div class="tree" data-reveal role="img" aria-label="Repository layout">
-            <header>github.com/Kyzenkms/solisk-pc-mcp</header>
+            <header>solisk-pc-mcp · source opens at GA</header>
             <pre><code><b>desktop-app/</b>   Windows control surface
 <b>relay-server/</b>  WebSocket + MCP relay
 <b>tools/</b>         97 local capabilities
@@ -384,8 +400,8 @@
             <details>
               <summary>Why does Windows warn about the installer?</summary>
               <p>
-                The installer is unsigned, so SmartScreen flags it. Download
-                only from the official releases page and verify the checksum.
+                The installer is unsigned, so SmartScreen flags it. Install
+                only the build from your beta invite and verify the checksum.
               </p>
             </details>
             <details>
@@ -404,12 +420,12 @@
           <h2>Deploy globally. <em>Keep authority local.</em></h2>
           <a
             class="button primary"
-            href="https://github.com/Kyzenkms/solisk-pc-mcp/releases"
+            href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access"
             ><svg viewBox="0 0 24 24">
-              <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14" /></svg
-            >Download</a
+              <path d="M4 6h16v12H4zM4 7l8 6 8-6" /></svg
+            >Request access</a
           >
-          <div class="release-note">Windows 10/11 64-bit · v1.0.0 · MIT</div>
+          <div class="release-note">Windows 10/11 64-bit · v1.0.0 · invite-only beta</div>
         </div>
       </section>
     </main>
@@ -420,21 +436,21 @@
             ><img src="assets/logo.svg" alt="PC Control MCP logo" /><span>PC Control MCP</span></a
           >
           <p>
-            Open-source MCP control infrastructure for explicit, scoped AI
-            access to Windows environments.
+            Scoped AI control for Windows environments — explicit,
+            local-first, and yours to host.
           </p>
         </div>
         <div>
           <h3>Product</h3>
           <a href="docs.html">Documentation</a
           ><a href="security.html">Security</a
-          ><a href="https://github.com/Kyzenkms/solisk-pc-mcp/releases"
-            >Download</a
+          ><a href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access"
+            >Request access</a
           >
         </div>
         <div>
           <h3>Project</h3>
-          <a href="https://github.com/Kyzenkms/solisk-pc-mcp">GitHub</a
+          <a href="mailto:kyzenkms@duck.com">Contact</a
           ><a href="docs.html#self-hosting">Self-host</a
           ><a href="mailto:kyzenkms@duck.com">Contact</a>
         </div>

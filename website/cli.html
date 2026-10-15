@@ -19,7 +19,7 @@
     <link rel="canonical" href="https://solisk.org/cli.html" />
     <meta name="twitter:card" content="summary" />
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=101" />
     <script defer src="app.js"></script>
   </head>
   <body>
@@ -41,11 +41,11 @@
           ><a href="docs.html">Docs</a
           ><a href="cli.html" aria-current="page">CLI</a
           ><a href="security.html">Security</a
-          ><a href="https://github.com/Kyzenkms/solisk-pc-mcp">GitHub</a
+          ><a href="mailto:kyzenkms@duck.com">Contact</a
           ><a
             class="nav-cta"
-            href="https://github.com/Kyzenkms/solisk-pc-mcp/releases"
-            >Download</a
+            href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access"
+            >Request access</a
           >
         </div>
       </nav>
@@ -77,11 +77,9 @@
         <article class="docs-content">
           <section id="install">
             <h2>Install on a VPS</h2>
-            <pre><code>git clone &lt;repo&gt; &amp;&amp; cd &lt;repo&gt;
-sudo bash pc-control-headless/deploy/install.sh
-# prints the owner api_key ONCE — store it</code></pre>
-            <p>Prefer containers?</p>
-            <pre><code>docker compose -f pc-control-headless/docker-compose.yml up -d --build</code></pre>
+            <pre><code>ssh root@YOUR_VPS
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/main/self-hosted-setup/vps/install.sh)"
+# pick Docker or PM2 when asked — prints the room + key ONCE</code></pre>
             <div class="notice">
               The server binds <code>127.0.0.1</code> by default. Reach it
               over SSH tunnel, Tailscale, or a TLS reverse proxy — never
@@ -241,8 +239,8 @@ pc-control tailscale [status] | serve | funnel --yes | off</code></pre>
         </div>
         <div>
           <h3>Project</h3>
-          <a href="https://github.com/Kyzenkms/solisk-pc-mcp">GitHub</a
-          ><a href="https://github.com/Kyzenkms/solisk-pc-mcp/releases">Download</a>
+          <a href="mailto:kyzenkms@duck.com">Contact</a
+          ><a href="mailto:kyzenkms@duck.com?subject=PC%20Control%20MCP%20beta%20access">Request access</a>
         </div>
         <div>
           <h3>Legal</h3>
