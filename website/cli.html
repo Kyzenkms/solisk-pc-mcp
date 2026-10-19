@@ -88,11 +88,11 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/m
           </section>
           <section id="run">
             <h2>Run modes</h2>
-            <pre><code>pc-control --mode=http --host 127.0.0.1 --port 3000
-pc-control --mode=stdio            # Claude Desktop / Cursor / Cline
-pc-control --status                # probe a running server (exit 0 = up)
-pc-control --list-tools            # active vs disabled matrix
-pc-control --setup                 # regenerate config + key</code></pre>
+            <pre><code>solisk --mode=http --host 127.0.0.1 --port 3000
+solisk --mode=stdio            # Claude Desktop / Cursor / Cline
+solisk --status                # probe a running server (exit 0 = up)
+solisk --list-tools            # active vs disabled matrix
+solisk --setup                 # regenerate config + key</code></pre>
             <p>
               Approval defaults to <code>always</code>: read-only shell
               commands run, mutating ones are refused. Pass
@@ -115,10 +115,10 @@ pc-control --setup                 # regenerate config + key</code></pre>
           <section id="tailscale">
             <h2>Tailscale remote access</h2>
             <p>Tailnet-only (recommended):</p>
-            <pre><code>pc-control --mode=http --tailscale
+            <pre><code>solisk --mode=http --tailscale
 # → https://&lt;machine&gt;.&lt;tailnet&gt;  (dashboard + MCP, tailnet HTTPS)</code></pre>
             <p>Public internet (deliberate only):</p>
-            <pre><code>pc-control --mode=http --tailscale-funnel
+            <pre><code>solisk --mode=http --tailscale-funnel
 # Bearer key becomes the entire boundary. Prefer tailnet.</code></pre>
           </section>
           <section id="cloudflare">
@@ -128,15 +128,15 @@ pc-control --setup                 # regenerate config + key</code></pre>
               Cloudflare connector. Two flavors:
             </p>
             <p><strong>Quick</strong> — random address, no account:</p>
-            <pre><code>pc-control tunnel quick   # or flip it in the app: Overview → Cloudflare tunnel</code></pre>
+            <pre><code>solisk tunnel quick   # or flip it in the app: Overview → Cloudflare tunnel</code></pre>
             <p><strong>Custom domain</strong> — stable address on your domain.
               Needs a Cloudflare account holding that domain. The app (or CLI)
               walks you through it: browser login (you click once),
               tunnel creation, DNS routing, token stored as a secret:</p>
-            <pre><code>pc-control tunnel login
-pc-control tunnel create [name]
-pc-control tunnel route mcp.yourdomain.com
-pc-control tunnel custom</code></pre>
+            <pre><code>solisk tunnel login
+solisk tunnel create [name]
+solisk tunnel route mcp.yourdomain.com
+solisk tunnel custom</code></pre>
             <div class="notice">
               Quick addresses change every restart; custom domains don't.
               The token never prints — <code>tunnel forget</code> drops it.
@@ -164,34 +164,34 @@ pc-control tunnel custom</code></pre>
               server — GUI or CLI — instead of starting a second one.
               Output is colored on a terminal, raw when piped.
             </p>
-            <pre><code>pc-control dashboard            # probe + print console URL (+ open it)
-pc-control dashboard --no-open  # print only, for SSH sessions
-pc-control doctor               # 11 checks: node, config, key, port, tools…
-pc-control doctor --lint        # exit 2 on any failing check (CI gate)
-pc-control doctor --json        # machine-readable report on stdout
-pc-control config get port      # read a value (secrets never print)
-pc-control config set port 3421 # validated write, bad values rejected
-pc-control config validate      # schema check without changing anything
-pc-control rotate-key           # new owner key, old stays valid for handover
-pc-control logs --lines 50      # audit tail (capped, 500 chars/line)
-pc-control logs --follow        # stream new audit lines
-pc-control backup               # timestamped config copy next to config
-pc-control gui status           # is the desktop app installed? runtime up?
-pc-control gui setup --installer "C:\path\to\PC Control MCP Setup 1.0.0.exe"
-pc-control setup                # step-by-step onboarding (needs a terminal)
-pc-control keys list            # fingerprints only — full keys never print
-pc-control keys add phone       # read-only by default, prints once
-pc-control keys add admin --scopes mcp:resources,mcp:tools
-pc-control keys revoke phone    # by id, label, or key prefix (8+ chars)
-pc-control relay status         # live relay state (not just config intent)
-pc-control relay retry          # redial now, same box or remote runtime
-pc-control tunnel [status]      # cloudflared: installed? logged in? live URL?
-pc-control tunnel off|quick|custom
-pc-control tunnel login         # browser login, app waits for the certificate
-pc-control tunnel create [name] # named tunnel (reused if it exists)
-pc-control tunnel route &lt;host&gt;  # DNS + token, stored secret, never shown
-pc-control tunnel forget        # drop token, back to quick
-pc-control tailscale [status] | serve | funnel --yes | off</code></pre>
+            <pre><code>solisk dashboard            # probe + print console URL (+ open it)
+solisk dashboard --no-open  # print only, for SSH sessions
+solisk doctor               # 11 checks: node, config, key, port, tools…
+solisk doctor --lint        # exit 2 on any failing check (CI gate)
+solisk doctor --json        # machine-readable report on stdout
+solisk config get port      # read a value (secrets never print)
+solisk config set port 3421 # validated write, bad values rejected
+solisk config validate      # schema check without changing anything
+solisk rotate-key           # new owner key, old stays valid for handover
+solisk logs --lines 50      # audit tail (capped, 500 chars/line)
+solisk logs --follow        # stream new audit lines
+solisk backup               # timestamped config copy next to config
+solisk gui status           # is the desktop app installed? runtime up?
+solisk gui setup --installer "C:\path\to\PC Control MCP Setup 1.0.0.exe"
+solisk setup                # step-by-step onboarding (needs a terminal)
+solisk keys list            # fingerprints only — full keys never print
+solisk keys add phone       # read-only by default, prints once
+solisk keys add admin --scopes mcp:resources,mcp:tools
+solisk keys revoke phone    # by id, label, or key prefix (8+ chars)
+solisk relay status         # live relay state (not just config intent)
+solisk relay retry          # redial now, same box or remote runtime
+solisk tunnel [status]      # cloudflared: installed? logged in? live URL?
+solisk tunnel off|quick|custom
+solisk tunnel login         # browser login, app waits for the certificate
+solisk tunnel create [name] # named tunnel (reused if it exists)
+solisk tunnel route &lt;host&gt;  # DNS + token, stored secret, never shown
+solisk tunnel forget        # drop token, back to quick
+solisk tailscale [status] | serve | funnel --yes | off</code></pre>
             <div class="notice">
               <code>config set</code> refuses secrets and unknown keys —
               use <code>rotate-key</code> for keys. In the running app,

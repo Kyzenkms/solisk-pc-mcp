@@ -1,5 +1,6 @@
 {
   "name": "pc-control-headless",
+  "private": true,
   "version": "1.0.0",
   "description": "Headless CLI build of PC Control MCP — VPS-ready MCP server (stdio + StreamableHTTP), no Electron, no GUI.",
   "type": "commonjs",

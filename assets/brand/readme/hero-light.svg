@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-labelledby="heroTitle">
+  <title id="heroTitle">Solisk PC Control MCP — CLI-first MCP server for your PC</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7FBFA"/>
+      <stop offset="1" stop-color="#E9F4F1"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#0E9C8A" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#0E9C8A" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.1" fill="#4E6F6A" fill-opacity="0.07"/>
+    </pattern>
+    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0E9C8A" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#0E9C8A" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#0E9C8A" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="cardClip"><rect x="690" y="64" width="430" height="232" rx="16"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#dots)"/>
+  <rect x="1" y="1" width="1198" height="358" rx="27.5" fill="none" stroke="#CFE4DF" stroke-opacity="0.8"/>
+
+  <ellipse cx="160" cy="170" rx="280" ry="190" fill="url(#glow)">
+    <animate attributeName="opacity" values="0.55;1;0.55" dur="7s" repeatCount="indefinite"/>
+  </ellipse>
+
+  <g fill="#0E9C8A">
+    <circle cx="340" cy="64" r="2" opacity="0.45"><animate attributeName="cy" values="64;55;64" dur="9s" repeatCount="indefinite"/></circle>
+    <circle cx="500" cy="312" r="1.6" opacity="0.3"><animate attributeName="cy" values="312;320;312" dur="11s" repeatCount="indefinite"/></circle>
+    <circle cx="640" cy="48" r="1.4" opacity="0.35"><animate attributeName="cy" values="48;40;48" dur="8s" repeatCount="indefinite"/></circle>
+  </g>
+  <g fill="#4E8F3E">
+    <circle cx="228" cy="304" r="1.8" opacity="0.35"><animate attributeName="cy" values="304;296;304" dur="10s" repeatCount="indefinite"/></circle>
+    <circle cx="560" cy="120" r="1.4" opacity="0.28"><animate attributeName="cy" values="120;112;120" dur="12s" repeatCount="indefinite"/></circle>
+    <circle cx="660" cy="330" r="2" opacity="0.3"><animate attributeName="cy" values="330;322;330" dur="9.5s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <g transform="translate(92,112)">
+    <rect x="0" y="0" width="96" height="96" rx="22" fill="#F2FAF8" stroke="#CFE4DF" stroke-width="1.5"/>
+    <g transform="scale(2.18)">
+      <path d="M31 13C27 9.5 18 9.5 18 15c0 4.5 9 4 9 8.5" fill="none" stroke="#0E9C8A" stroke-width="3" stroke-linecap="round" stroke-dasharray="90" stroke-dashoffset="90">
+        <animate attributeName="stroke-dashoffset" from="90" to="0" begin="0.3s" dur="0.9s" fill="freeze"/>
+      </path>
+      <path d="M13 31c4 3.5 9 3.5 9-1.5 0-4 3-5 5-6" fill="none" stroke="#4E8F3E" stroke-width="3" stroke-linecap="round" stroke-dasharray="90" stroke-dashoffset="90">
+        <animate attributeName="stroke-dashoffset" from="90" to="0" begin="0.6s" dur="0.9s" fill="freeze"/>
+      </path>
+    </g>
+  </g>
+
+  <text x="220" y="170" font-family="Inter, Segoe UI, system-ui, -apple-system, sans-serif" font-size="64" font-weight="800" letter-spacing="14" fill="#0B1F1D">SOLISK</text>
+  <text x="222" y="206" font-family="Cascadia Code, Consolas, ui-monospace, monospace" font-size="14" letter-spacing="8" fill="#0E9C8A">PC CONTROL MCP</text>
+  <text x="222" y="252" font-family="Inter, Segoe UI, system-ui, -apple-system, sans-serif" font-size="19" fill="#4E6F6A">Give trusted AI clients secure control of your PC.</text>
+
+  <g font-family="Cascadia Code, Consolas, ui-monospace, monospace" font-size="11.5" letter-spacing="1.5" fill="#4E6F6A">
+    <rect x="220" y="278" width="78" height="26" rx="13" fill="#0B1F1D" fill-opacity="0.03" stroke="#CFE4DF"/>
+    <text x="234" y="295.5">CLI-FIRST</text>
+    <rect x="312" y="278" width="104" height="26" rx="13" fill="#0B1F1D" fill-opacity="0.03" stroke="#CFE4DF"/>
+    <text x="326" y="295.5">WINDOWS GUI</text>
+    <rect x="430" y="278" width="146" height="26" rx="13" fill="#0B1F1D" fill-opacity="0.03" stroke="#CFE4DF"/>
+    <text x="444" y="295.5">SELF-HOSTED RELAY</text>
+  </g>
+
+  <g>
+    <rect x="690" y="64" width="430" height="232" rx="16" fill="#0B1F1D" fill-opacity="0.035" stroke="#CFE4DF"/>
+    <g clip-path="url(#cardClip)">
+      <rect x="690" y="64" width="430" height="232" rx="16" fill="url(#sweep)" opacity="0.06">
+        <animate attributeName="x" values="560;900;560" dur="9s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+    <circle cx="712" cy="88" r="4.5" fill="#E35D6A" opacity="0.8"/>
+    <circle cx="730" cy="88" r="4.5" fill="#E8C15A" opacity="0.8"/>
+    <circle cx="748" cy="88" r="4.5" fill="#6FD18F" opacity="0.8"/>
+    <text x="766" y="92.5" font-family="Cascadia Code, Consolas, ui-monospace, monospace" font-size="12" fill="#7C9A95">PowerShell — solisk doctor</text>
+    <line x1="706" y1="106" x2="1104" y2="106" stroke="#CFE4DF" stroke-opacity="0.7"/>
+
+    <g font-family="Cascadia Code, Consolas, ui-monospace, monospace" font-size="13">
+      <text y="136" fill="#31534E" opacity="0"><tspan x="716" fill="#0E9C8A">●</tspan><tspan x="738">node</tspan><tspan x="812">22.21.1</tspan><animate attributeName="opacity" from="0" to="1" begin="0.7s" dur="0.4s" fill="freeze"/></text>
+      <text y="162" fill="#31534E" opacity="0"><tspan x="716" fill="#0E9C8A">●</tspan><tspan x="738">config</tspan><tspan x="812">~/.config/solisk/config.json</tspan><animate attributeName="opacity" from="0" to="1" begin="1.05s" dur="0.4s" fill="freeze"/></text>
+      <text y="188" fill="#31534E" opacity="0"><tspan x="716" fill="#0E9C8A">●</tspan><tspan x="738">tools</tspan><tspan x="812">97 active</tspan><animate attributeName="opacity" from="0" to="1" begin="1.4s" dur="0.4s" fill="freeze"/></text>
+      <text y="214" fill="#31534E" opacity="0"><tspan x="716" fill="#0E9C8A">●</tspan><tspan x="738">runtime</tspan><tspan x="812">up 4h 12m</tspan><animate attributeName="opacity" from="0" to="1" begin="1.75s" dur="0.4s" fill="freeze"/></text>
+      <text y="244" fill="#4E8F3E" font-weight="700" opacity="0"><tspan x="704" fill="#4E8F3E">—</tspan><tspan x="738">0 failing · 0 warnings</tspan><animate attributeName="opacity" from="0" to="1" begin="2.1s" dur="0.4s" fill="freeze"/></text>
+    </g>
+    <rect x="936" y="232" width="8" height="15" fill="#0E9C8A" opacity="0">
+      <animate attributeName="opacity" values="1;0;1" keyTimes="0;0.5;1" dur="1.2s" begin="2.5s" repeatCount="indefinite"/>
+    </rect>
+    <text x="1104" y="278" font-family="Cascadia Code, Consolas, ui-monospace, monospace" font-size="11" fill="#7C9A95" text-anchor="end">v1.0.0 · solisk.org</text>
+  </g>
+</svg>

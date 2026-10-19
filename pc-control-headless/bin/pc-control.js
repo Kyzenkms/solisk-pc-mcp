@@ -2,13 +2,13 @@
 "use strict";
 
 /**
- * pc-control — headless CLI for PC Control MCP (VPS / server deploys).
+ * solisk — headless CLI for PC Control MCP (VPS / server deploys).
  *
- *   pc-control --mode=http [--host 127.0.0.1] [--port 3000] [--config PATH]
- *   pc-control --mode=stdio
- *   pc-control --list-tools        list active tools and exit
- *   pc-control --setup             generate config + key and exit
- *   pc-control --help
+ *   solisk --mode=http [--host 127.0.0.1] [--port 3000] [--config PATH]
+ *   solisk --mode=stdio
+ *   solisk --list-tools        list active tools and exit
+ *   solisk --setup             generate config + key and exit
+ *   solisk --help
  *
  * Env: MCP_CONFIG_PATH, PC_CONTROL_HOST, PC_CONTROL_PORT, PC_CONTROL_APPROVAL
  *      (approval: always | intermediate | turbo; default always)
@@ -99,26 +99,26 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.error(`pc-control-headless v${VERSION}
+  console.error(`solisk v${VERSION}
 Usage:
-  pc-control --mode=http [--host 127.0.0.1] [--port 3000] [--config PATH] [--approval-mode always|intermediate|turbo] [--tailscale|--tailscale-funnel] [--no-relay]
-  pc-control --mode=stdio [--config PATH]
-  pc-control --status [--host 127.0.0.1] [--port 3000] [--config PATH]
-  pc-control dashboard [--port 3000] [--no-open] [--config PATH]
-  pc-control doctor [--lint] [--json] [--fix] [--config PATH]
-  pc-control config get <key> | set <key> <value> | validate [--config PATH]
-  pc-control rotate-key [--config PATH]
-  pc-control logs [--lines 50] [--follow] [--config PATH]
-  pc-control backup [--config PATH]
-  pc-control gui [status] [--port 3000] [--config PATH]
-  pc-control gui setup [--installer PATH] [--config PATH]
-  pc-control setup [--config PATH]                 # step-by-step onboarding wizard
-  pc-control keys list | add <label> [--scopes s] | revoke <id|label|prefix>
-  pc-control relay [status] | retry [--port 3000]
-  pc-control devices [list] | revoke <id> [--port 3000]
-  pc-control tunnel [status] | off | quick | custom | login | create [name] | route <host> | forget
-  pc-control tailscale [status] | serve | funnel | off
-  pc-control --list-tools | --setup | --help | --version
+  solisk --mode=http [--host 127.0.0.1] [--port 3000] [--config PATH] [--approval-mode always|intermediate|turbo] [--tailscale|--tailscale-funnel] [--no-relay]
+  solisk --mode=stdio [--config PATH]
+  solisk --status [--host 127.0.0.1] [--port 3000] [--config PATH]
+  solisk dashboard [--port 3000] [--no-open] [--config PATH]
+  solisk doctor [--lint] [--json] [--fix] [--config PATH]
+  solisk config get <key> | set <key> <value> | validate [--config PATH]
+  solisk rotate-key [--config PATH]
+  solisk logs [--lines 50] [--follow] [--config PATH]
+  solisk backup [--config PATH]
+  solisk gui [status] [--port 3000] [--config PATH]
+  solisk gui setup [--installer PATH] [--config PATH]
+  solisk setup [--config PATH]                 # step-by-step onboarding wizard
+  solisk keys list | add <label> [--scopes s] | revoke <id|label|prefix>
+  solisk relay [status] | retry [--port 3000]
+  solisk devices [list] | revoke <id> [--port 3000]
+  solisk tunnel [status] | off | quick | custom | login | create [name] | route <host> | forget
+  solisk tailscale [status] | serve | funnel | off
+  solisk --list-tools | --setup | --help | --version
 Notes:
   - Windows-only tools are disabled off-Windows (Linux/macOS get 46 tools
     + shell_exec). On Windows the CLI serves the full native set, like the GUI.
@@ -189,7 +189,7 @@ async function main() {
   const keyFp = crypto.createHash("sha256").update(String(config.api_key || "")).digest("hex").slice(0, 12);
 
   if (args.setup) {
-    console.error(bold(`pc-control setup  ${dim("v" + VERSION)}`));
+    console.error(bold(`solisk setup  ${dim("v" + VERSION)}`));
     console.error(`  config   ${cyan(configPath)} ${dim("(mode 600)")}`);
     console.error(`  key      ${dim("sha256:")}${keyFp}`);
     console.error(`  owner    ${bold(yellow(config.api_key))}`);
@@ -255,7 +255,7 @@ async function main() {
     }
   }
 
-  console.error(`pc-control-headless v${VERSION} — key sha256:${keyFp} — approval:${config.permission_mode || "always"}`);
+  console.error(`solisk v${VERSION} — key sha256:${keyFp} — approval:${config.permission_mode || "always"}`);
 
   if (args.mode === "stdio") {
     const { startHeadlessStdio } = require("../stdio");
@@ -378,7 +378,7 @@ function keyMismatchHint() {
 
 // Same-box key fallback: when this config's key is refused but the GUI
 // face's key opens the running server, use it for this run and say so.
-// This is what makes a fresh `pc-control doctor` work without flags.
+// This is what makes a fresh `solisk doctor` work without flags.
 let _attachNoteShown = false;
 async function reconcileAttachKey(config, target) {
   if (!config || !config.api_key) return;
@@ -519,7 +519,7 @@ async function cmdDoctor(args, config, target, configPath) {
   if (args.json) {
     console.log(JSON.stringify({ fails, warns, checks }, null, 2)); // stdout: pipeable
   } else {
-    console.error(bold("pc-control doctor"));
+    console.error(bold("solisk doctor"));
     const width = Math.max(...checks.map((c) => c.name.length));
     for (const c of checks)
       console.error(`  ${tick(c.status)} ${c.name.padEnd(width)}  ${c.status === "ok" ? dim(c.detail) : c.status === "warn" ? yellow(c.detail) : red(c.detail)}`);
@@ -699,14 +699,15 @@ async function cmdGui(args, config, target) {
   const op = args.subArgs[0] || "status";
   if (process.platform !== "win32") {
     console.error("GUI setup is Windows-only — this box is " + process.platform + ".");
-    console.error("Grab the Windows installer from https://solisk.org/ and run it on the PC.");
+    console.error(`Use the web control room instead: solisk --mode=http, then open http://127.0.0.1:${target.port}/app`);
+    console.error("Windows machines: download the installer from https://solisk.org/ and run it there.");
     process.exit(2);
   }
   if (op === "status") {
     const g = detectGuiInstall();
     if (!g.installed) {
       console.error(`${yellow("▲")} GUI ${bold("not installed")} on this machine.`);
-      console.error(`  install  ${cyan("pc-control gui setup --installer <path-to-setup.exe|.msi>")}`);
+      console.error(`  install  ${cyan("solisk gui setup --installer <path-to-setup.exe|.msi>")}`);
     } else {
       console.error(`${green("●")} GUI ${bold("installed")}  ${cyan(g.displayName || "PC Control MCP")} ${dim("v" + (g.version || "?"))}`);
       console.error(`  path     ${cyan(g.dir)}`);
@@ -726,7 +727,7 @@ async function cmdGui(args, config, target) {
     const found = await probeStatus(target.host, target.port, config.api_key);
     if (found && found.s) console.error(`  runtime  ${green("●")} ${bold("up")}  ${cyan(found.s.mode || "?")} — CLI attaches to it, nothing new started.`);
     else if (found) console.error(`  runtime  ${yellow("▲")} ${bold("up but key refused (401)")} — see keys line above.`);
-    else console.error(`  runtime  ${dim("stopped — start it from the GUI or `pc-control --mode=http`")}`);
+    else console.error(`  runtime  ${dim("stopped — start it from the GUI or `solisk --mode=http`")}`);
     return;
   }
   if (op === "setup") {
@@ -734,14 +735,14 @@ async function cmdGui(args, config, target) {
     if (g.installed) {
       console.error(`${green("●")} GUI already installed  ${cyan(g.displayName || "")} ${dim("v" + (g.version || "?"))}`);
       console.error(`  path     ${cyan(g.dir)}`);
-      console.error(dim("  Nothing to do — `pc-control gui status` shows the runtime."));
+      console.error(dim("  Nothing to do — `solisk gui status` shows the runtime."));
       return;
     }
     const installer = args.installer || process.env.PC_CONTROL_GUI_INSTALLER;
     if (!installer || !fs.existsSync(installer)) {
       console.error(red("✖") + " no installer found. Pass it explicitly:");
-      console.error(`  ${cyan("pc-control gui setup --installer \"C:\\path\\to\\PC Control MCP Setup 1.0.0.exe\"")}`);
-      console.error(`  ${cyan("pc-control gui setup --installer \"C:\\path\\to\\PC Control MCP 1.0.0.msi\"")}`);
+      console.error(`  ${cyan("solisk gui setup --installer \"C:\\path\\to\\PC Control MCP Setup 1.0.0.exe\"")}`);
+      console.error(`  ${cyan("solisk gui setup --installer \"C:\\path\\to\\PC Control MCP 1.0.0.msi\"")}`);
       process.exit(2);
     }
     const isMsi = /\.msi$/i.test(installer);
@@ -767,7 +768,7 @@ async function cmdGui(args, config, target) {
     }
     return;
   }
-  console.error("usage: pc-control gui [status] | gui setup [--installer PATH]");
+  console.error("usage: solisk gui [status] | gui setup [--installer PATH]");
   process.exit(2);
 }
 
@@ -792,7 +793,7 @@ async function cmdSetupWizard(config, configPath) {
     return a === "y" || a === "yes";
   };
 
-  console.error(bold("pc-control setup") + dim(" — step by step, Enter accepts the default"));
+  console.error(bold("solisk setup") + dim(" — step by step, Enter accepts the default"));
   const fresh = !fs.existsSync(configPath);
 
   // GUI seeds defaults; its key is adopted when this config has none.
@@ -863,7 +864,7 @@ async function cmdSetupWizard(config, configPath) {
     console.error(`  key      ${bold(yellow(String(config.api_key)))} ${dim("sha256:" + fp)}`);
     console.error(red("  Store it now — it is never printed again."));
   }
-  console.error(dim(`  next: pc-control --mode=http   ·   pc-control dashboard   ·   pc-control doctor`));
+  console.error(dim(`  next: solisk --mode=http   ·   solisk dashboard   ·   solisk doctor`));
 }
 
 const KEY_SCOPES = ["mcp:tools", "mcp:resources"];
@@ -997,7 +998,7 @@ async function cmdRelay(args, config, target) {
     else console.error(dim(`relay intended: room ${config.name} — no live runtime answering on ${target.host}:${target.port}.`));
     return;
   }
-  console.error("usage: pc-control relay [status] | retry");
+  console.error("usage: solisk relay [status] | retry");
   process.exit(2);
 }
 
@@ -1038,7 +1039,7 @@ async function cmdDevices(args, config, target) {
     else console.error(red("✖") + ` ${r.error || "not found"}`);
     return;
   }
-  console.error("usage: pc-control devices [list] | revoke <id>");
+  console.error("usage: solisk devices [list] | revoke <id>");
   process.exit(2);
 }
 

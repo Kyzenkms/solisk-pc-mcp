@@ -165,7 +165,7 @@ shows only pre-existing session modifications plus the new folder).
   `write-clipboard`/`open-url` IPC) + 3-line status render. No main.js,
   preload, or CSS change. `node --check` clean on both renderer files;
   desktop `/dashboard` mount (index.js:374) already serves the card's URL.
-- `pc-control gui status/setup` (Windows-only, refuses elsewhere): detect
+- `solisk gui status/setup` (Windows-only, refuses elsewhere): detect
   via HKCU Uninstall registry + exe on disk + version from
   `resources/app/package.json`; `setup` short-circuits when installed,
   else silent-installs (`/S`) from `--installer`/`PC_CONTROL_GUI_INSTALLER`

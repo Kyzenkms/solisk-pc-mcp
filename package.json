@@ -1,11 +1,32 @@
 {
-  "name": "pc-control-mcp",
+  "name": "solisk",
   "version": "1.0.0",
-  "description": "Production-grade MCP server giving AI full control of your Windows PC. Works with ChatGPT connectors, Claude.ai integrations, Cursor, and any MCP client.",
+  "description": "MCP server giving AI clients secure control of your PC — CLI-first on Windows, Linux and macOS, Windows GUI optional.",
   "main": "index.js",
   "type": "commonjs",
   "bin": {
+    "solisk": "pc-control-headless/bin/pc-control.js",
+    "pc-control": "pc-control-headless/bin/pc-control.js",
     "pc-control-mcp": "app.js"
+  },
+  "files": [
+    "assets/brand/readme/",
+    "pc-control-headless/bin/",
+    "pc-control-headless/package.json",
+    "pc-control-headless/server.js",
+    "pc-control-headless/stdio.js",
+    "pc-control-headless/tools.js",
+    "pc-control-headless/tools/",
+    "pc-control-headless/web/",
+    "pc-control-headless/config.example.json",
+    "lib/",
+    "tools/",
+    "relay-server/scopes.js",
+    "index.js",
+    "app.js"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
   },
   "scripts": {
     "start": "node app.js",
