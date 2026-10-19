@@ -76,7 +76,10 @@
         </aside>
         <article class="docs-content">
           <section id="install">
-            <h2>Install on a VPS</h2>
+            <h2>Install</h2>
+            <pre><code>npm install -g solisk          # Node 22.5+ — macOS, Linux, Windows
+npx solisk --mode=stdio        # or run without installing</code></pre>
+            <p>For a shared instance on a server, use the VPS installer:</p>
             <pre><code>ssh root@YOUR_VPS
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/main/self-hosted-setup/vps/install.sh)"
 # pick Docker or PM2 when asked — prints the room + key ONCE</code></pre>
