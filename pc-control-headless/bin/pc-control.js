@@ -48,7 +48,7 @@ function defaultConfigPath() {
 })();
 
 const VERSION = require("../package.json").version;
-const { WINDOWS_ONLY, SHELL_EXTRA } = require("../tools");
+const { WINDOWS_ONLY, SHELL_EXTRA, MAC_TOOL_NAMES } = require("../tools");
 
 // ── Terminal polish (zero deps; raw when piped) ────────────────────────────
 const TTY = !!process.stderr.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
@@ -200,11 +200,12 @@ async function main() {
   if (args.listTools) {
     const { getToolList } = require("../../lib/registry");
     const active = getToolList().map((t) => t.name);
-    const extra = SHELL_EXTRA ? ["shell_exec"] : [];
+    const extra = [...(SHELL_EXTRA ? ["shell_exec"] : []), ...MAC_TOOL_NAMES];
     console.error(`active (${active.length + extra.length}):`);
     for (const n of [...active, ...extra].sort()) console.error(`  ${n}`);
-    console.error(`disabled windows-only (${SHELL_EXTRA ? WINDOWS_ONLY.length : 0}):`);
-    for (const n of (SHELL_EXTRA ? [...WINDOWS_ONLY].sort() : [])) console.error(`  ${n}`);
+    const stillDisabled = (SHELL_EXTRA ? WINDOWS_ONLY : []).filter((n) => !MAC_TOOL_NAMES.includes(n));
+    console.error(`disabled windows-only (${stillDisabled.length}):`);
+    for (const n of [...stillDisabled].sort()) console.error(`  ${n}`);
     return;
   }
 
@@ -460,7 +461,7 @@ async function cmdDoctor(args, config, target, configPath) {
   // 6. tool registry loads
   try {
     const { getToolList } = require("../../lib/registry");
-    const n = getToolList().length + (SHELL_EXTRA ? 1 : 0); // + shell_exec off-Windows
+    const n = getToolList().length + (SHELL_EXTRA ? 1 : 0) + MAC_TOOL_NAMES.length; // + shell_exec / macOS tools
     if (n > 0) ok("tools", `${n} active`);
     else fail("tools", "registry empty");
   } catch (err) { fail("tools", `registry failed: ${err.message}`); }

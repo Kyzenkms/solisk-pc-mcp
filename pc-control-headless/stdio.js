@@ -11,7 +11,7 @@ const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio
 const { registerAllTools } = require("../lib/registry");
 const { loadConfig } = require("../lib/security");
 const { log, setupGracefulShutdown } = require("../lib/middleware");
-const { registerCliExtra } = require("./tools");
+const { registerCliExtra, registerMacTools } = require("./tools");
 
 async function startHeadlessStdio({ version }) {
   loadConfig();
@@ -21,6 +21,7 @@ async function startHeadlessStdio({ version }) {
   const server = new McpServer({ name: "pc-control-headless", version });
   registerAllTools(server);
   registerCliExtra(server);
+  registerMacTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

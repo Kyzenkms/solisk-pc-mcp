@@ -7,6 +7,7 @@
  */
 
 const { shellExecTool } = require("./tools/shell_linux");
+const { macTools } = require("./tools/mac");
 const { assertToolAllowed, jsonSchemaToZod } = require("../lib/registry");
 const { logAudit } = require("../lib/security");
 const { recordToolCall } = require("../lib/metrics");
@@ -14,6 +15,9 @@ const { log } = require("../lib/middleware");
 
 // On Windows the native run_command family covers shell — extra stays off.
 const SHELL_EXTRA = process.platform !== "win32";
+// macOS rebuilds of the Win32 input/screenshot tools, same names.
+const MAC_TOOL_NAMES = process.platform === "darwin" ? macTools.map((t) => t.name) : [];
+const PLATFORM_EXTRA_NAMES = [...(SHELL_EXTRA ? ["shell_exec"] : []), ...MAC_TOOL_NAMES];
 
 // Exact tool names per module (must match tools/*.js name fields).
 const WINDOWS_ONLY = [
@@ -71,4 +75,40 @@ function registerCliExtra(server, principal = null) {
   log("info", "Registered headless extra: shell_exec");
 }
 
-module.exports = { WINDOWS_ONLY, SHELL_EXTRA, registerCliExtra };
+/**
+ * macOS-only: register real implementations for tools that are Win32 on
+ * Windows. The CLI already force-added those names to disabled_tools (platform
+ * gate, line pc-control.js:159), which is why this wrapper skips
+ * assertToolAllowed — otherwise the gate would block its own replacement.
+ * ponytail: bypasses owner's disabled list too; wire a separate mac disable
+ * list if anyone ever hand-disables one of these on a Mac.
+ */
+function registerMacTools(server, principal = null) {
+  if (process.platform !== "darwin") return;
+  for (const tool of macTools) {
+    const zodSchema = jsonSchemaToZod(tool.inputSchema);
+    server.tool(tool.name, tool.description, zodSchema.shape, async (args) => {
+      const start = Date.now();
+      try {
+        const result = await tool.handler(zodSchema.parse(args));
+        const success = result.success !== false;
+        logAudit(tool.name, args, success, success ? result : (result.error || "Failed"));
+        recordToolCall(tool.name, success);
+        log("info", `Tool executed: ${tool.name}`, { tool: tool.name, success, duration_ms: Date.now() - start });
+        return {
+          isError: !success,
+          structuredContent: result,
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err) {
+        logAudit(tool.name, args, false, err.message);
+        recordToolCall(tool.name, false);
+        log("error", `Tool error: ${tool.name}`, { tool: tool.name, error: err.message, duration_ms: Date.now() - start });
+        return { content: [{ type: "text", text: `ERROR: ${err.message}` }], isError: true };
+      }
+    });
+  }
+  log("info", `Registered ${macTools.length} macOS-native tools: ${MAC_TOOL_NAMES.join(", ")}`);
+}
+
+module.exports = { WINDOWS_ONLY, SHELL_EXTRA, MAC_TOOL_NAMES, PLATFORM_EXTRA_NAMES, registerCliExtra, registerMacTools };

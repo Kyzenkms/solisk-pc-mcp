@@ -31,7 +31,7 @@ const {
   setupGracefulShutdown,
 } = require("../lib/middleware");
 const { getHealth, getMetrics, setSessionCount, incrementSessionCreated } = require("../lib/metrics");
-const { registerCliExtra, SHELL_EXTRA } = require("./tools");
+const { registerCliExtra, registerMacTools, PLATFORM_EXTRA_NAMES } = require("./tools");
 
 const SESSION_TTL = 30 * 60 * 1000;
 const MAX_SESSIONS = 5;
@@ -84,7 +84,7 @@ async function startHeadlessHttp({ port, host, version, noRelay }) {
       status: "running",
       version,
       mode: "headless",
-      tools: getToolList().length + (SHELL_EXTRA ? 1 : 0), // + shell_exec off-Windows
+      tools: getToolList().length + PLATFORM_EXTRA_NAMES.length, // + shell_exec / macOS tools
       sessions: sessions.size,
       uptime_seconds: Math.floor(process.uptime()),
       port: PORT,
@@ -124,7 +124,7 @@ async function startHeadlessHttp({ port, host, version, noRelay }) {
         return {
           running: true, starting: false,
           tunnelUrl: null, relayUrl, relayError: null,
-          toolCount: getToolList().length + (SHELL_EXTRA ? 1 : 0),
+          toolCount: getToolList().length + PLATFORM_EXTRA_NAMES.length,
           sessionCount: sessions.size, serverPort: PORT,
           relayOn: config.relay_enabled !== false,
           relayRetryCount: 0, maxRelayRetries: 10, isInternetOffline: false,
@@ -193,7 +193,7 @@ async function startHeadlessHttp({ port, host, version, noRelay }) {
     let scopeOf = () => "mcp:tools";
     try { scopeOf = require("../lib/scopes").toolScopeOf; } catch {}
     const tools = getToolList().map((t) => ({ name: t.name, scope: scopeOf(t.name) || "mcp:tools" }));
-    if (SHELL_EXTRA) tools.push({ name: "shell_exec", scope: scopeOf("shell_exec") || "mcp:tools" });
+    for (const n of PLATFORM_EXTRA_NAMES) tools.push({ name: n, scope: scopeOf(n) || "mcp:tools" });
     tools.sort((a, b) => a.name.localeCompare(b.name));
     res.json({ count: tools.length, tools });
   });
@@ -250,6 +250,7 @@ async function startHeadlessHttp({ port, host, version, noRelay }) {
     const server = new McpServer({ name: "pc-control-headless", version });
     registerAllTools(server, req.principal);
     registerCliExtra(server, req.principal);
+    registerMacTools(server, req.principal);
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => `sess_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,
@@ -288,7 +289,7 @@ async function startHeadlessHttp({ port, host, version, noRelay }) {
 
   return new Promise((resolve) => {
     const httpServer = app.listen(PORT, HOST, () => {
-      const count = getToolList().length + (SHELL_EXTRA ? 1 : 0);
+      const count = getToolList().length + PLATFORM_EXTRA_NAMES.length;
       log("info", `pc-control-headless on ${HOST}:${PORT} — ${count} tools`);
       console.error(`pc-control-headless v${version} — http://${HOST}:${PORT}/mcp (${count} tools)`);
       try {
