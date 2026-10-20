@@ -47,7 +47,7 @@ function defaultConfigPath() {
   }
 })();
 
-const VERSION = require("../package.json").version;
+const VERSION = require("../../package.json").version;
 const { WINDOWS_ONLY, SHELL_EXTRA, MAC_TOOL_NAMES } = require("../tools");
 
 // ── Terminal polish (zero deps; raw when piped) ────────────────────────────

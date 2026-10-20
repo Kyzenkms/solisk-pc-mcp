@@ -1,6 +1,6 @@
 {
   "name": "solisk",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "mcpName": "io.github.Kyzenkms/solisk-pc-mcp",
   "description": "MCP server giving AI clients secure control of your PC \u2014 CLI-first on Windows, Linux and macOS, Windows GUI optional.",
   "main": "index.js",
