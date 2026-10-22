@@ -156,14 +156,10 @@ app.use((req, res, next) => {
 });
 
 // ── Periodic in-memory state cleanup ────────────────────────────────────────
-// dynamicClients: Claude/ChatGPT register a new OAuth client per auth flow.
-// Without cleanup this Map grows unbounded. Expire after 2 days.
-setInterval(() => {
-  const cutoff = Date.now() - 2 * 24 * 60 * 60 * 1000;
-  for (const [id, c] of dynamicClients) {
-    if (c.createdAt && c.createdAt < cutoff) dynamicClients.delete(id);
-  }
-}, 60 * 60 * 1000).unref();
+// dynamicClients are persisted and never expire: ChatGPT/Claude keep the same
+// client_id for the life of a connector, so pruning them breaks authorization
+// with "Unknown OAuth client". Registration is rate-limited and each entry is
+// tiny, so unbounded growth is not a concern in practice.
 
 // sessionPrincipals: sessions expire on the PC after 30 min; mirror that here.
 setInterval(() => {
@@ -264,6 +260,7 @@ function loadState(name, primaryFile, legacyFile) {
 
 let rooms = loadState("rooms",  ROOMS_FILE,  LEGACY_ROOMS_FILE);
 let tokens = loadState("tokens", TOKENS_FILE, LEGACY_TOKENS_FILE);
+const dynamicClients = new Map(Object.entries(loadState("clients", null, null)));
 
 // ── Migration: legacy rooms stored a single PLAINTEXT `apiKey`. Convert to a
 //    per-room key list where every key is stored as a scrypt hash. Nothing is
@@ -291,7 +288,7 @@ let tokens = loadState("tokens", TOKENS_FILE, LEGACY_TOKENS_FILE);
 })();
 
 function saveState() {
-  try { stateStore.write({ rooms, tokens }); }
+  try { stateStore.write({ rooms, tokens, clients: Object.fromEntries(dynamicClients) }); }
   catch (error) { console.error("[relay] Could not persist relay state:", error.message); }
   // Any persisted mutation may have changed keys, rooms, or tokens —
   // drop cached auth decisions so the next request re-resolves exactly once.
@@ -1186,47 +1183,60 @@ app.get("/mcp/:code/.well-known/oauth-authorization-server", (req, res) => {
 });
 
 // ── OAuth Dynamic Client Registration ────────────────────────────────────────
-const dynamicClients = new Map();
+const TRUSTED_CLIENT_DOMAINS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.sh", "cursor.com"];
 
-const registerHandler = (req, res) => {
-  const body       = req.body || {};
-  const clientId   = "dyn_" + randomToken(12);
-  const clientSecret = randomToken(32);
-  const redirect_uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
-  
-  // Validate that all redirect_uris point to trusted AI client domains or loopback
-  const trustedDomains = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.sh", "cursor.com"];
-  for (const uriStr of redirect_uris) {
+// Returns an error string, or null when every redirect_uri is acceptable.
+function clientRedirectUrisError(redirectUris) {
+  for (const uriStr of redirectUris) {
     try {
       const parsed = new URL(uriStr);
       const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
-      const isTrusted = trustedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith("." + d));
+      const isTrusted = TRUSTED_CLIENT_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith("." + d));
       if (parsed.hash || (isLoopback ? !["http:", "https:"].includes(parsed.protocol) : parsed.protocol !== "https:")) {
-        return res.status(400).json({ error: "invalid_redirect_uri", error_description: "Redirect URI must use HTTPS, except loopback development URIs." });
+        return "Redirect URI must use HTTPS, except loopback development URIs.";
       }
       if (!isLoopback && !isTrusted) {
-        return res.status(400).json({ error: "invalid_redirect_uri", error_description: `Redirect URI domain '${parsed.hostname}' is not in the trusted domain whitelist.` });
+        return `Redirect URI domain '${parsed.hostname}' is not in the trusted domain whitelist.`;
       }
     } catch {
-      return res.status(400).json({ error: "invalid_redirect_uri", error_description: "Malformed redirect_uri provided." });
+      return "Malformed redirect_uri provided.";
     }
   }
+  return null;
+}
 
+// client_secret === "" registers a public client (PKCE only), used when a
+// client_id is recovered from an authorize request instead of registration.
+function createDynamicClient({ client_id, redirect_uris, client_name, client_secret }) {
+  const clientId = client_id || "dyn_" + randomToken(12);
   dynamicClients.set(clientId, {
     client_id:     clientId,
-    client_secret: clientSecret,
+    client_secret: client_secret === undefined ? randomToken(32) : client_secret,
     redirect_uris,
-    client_name:   body.client_name || "MCP Client",
-    grant_types:   body.grant_types || ["authorization_code"],
+    client_name:   client_name || "MCP Client",
+    grant_types:   ["authorization_code"],
     createdAt:     Date.now(),
   });
+  saveState();
+  return dynamicClients.get(clientId);
+}
 
-  console.log("[oauth/register] Created dynamic client:", clientId);
+const registerHandler = (req, res) => {
+  const body       = req.body || {};
+  const redirect_uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
+  const redirectError = clientRedirectUrisError(redirect_uris);
+  if (redirectError) {
+    return res.status(400).json({ error: "invalid_redirect_uri", error_description: redirectError });
+  }
+
+  const client = createDynamicClient({ redirect_uris, client_name: body.client_name });
+
+  console.log("[oauth/register] Created dynamic client:", client.client_id);
 
   res.status(201).json({
-    client_id:                  clientId,
-    client_secret:              clientSecret,
-    redirect_uris,
+    client_id:                  client.client_id,
+    client_secret:              client.client_secret,
+    redirect_uris:              client.redirect_uris,
     grant_types:                ["authorization_code", "refresh_token"],
     response_types:             ["code"],
     token_endpoint_auth_method: "client_secret_post",
@@ -1571,7 +1581,20 @@ function buildAuthPage(code, query) {
 // GET /oauth/authorize or /mcp/:code/oauth/authorize
 const authorizeGetHandler = (req, res) => {
   const code = req.params.code || getCode(req) || "default-pc";
-  console.log(`[oauth/authorize] GET room=${code} client=${String((req.query && req.query.client_id) || "").slice(0, 12)} resource=${String((req.query && req.query.resource) || "").slice(0, 80)}`);
+  const clientId = String((req.query && req.query.client_id) || "");
+  // Self-heal clients registered before dynamicClients was persisted (or whose
+  // record was lost): re-register the exact redirect_uri from this request.
+  // Registration is open and whitelisted the same way, so this grants nothing
+  // that POST /oauth/register would not.
+  if (clientId.startsWith("dyn_") && !dynamicClients.has(clientId)) {
+    const redirectUri = String((req.query && req.query.redirect_uri) || "");
+    if (redirectUri && !clientRedirectUrisError([redirectUri])) {
+      console.log("[oauth/authorize] Re-registering unknown client from authorize request:", clientId.slice(0, 12));
+      const recovered = createDynamicClient({ client_id: clientId, redirect_uris: [redirectUri], client_name: "Recovered MCP Client", client_secret: "" });
+      console.log("[oauth/authorize] Recovered client:", recovered.client_id.slice(0, 12), "redirect:", redirectUri.slice(0, 60));
+    }
+  }
+  console.log(`[oauth/authorize] GET room=${code} client=${clientId.slice(0, 12)} resource=${String((req.query && req.query.resource) || "").slice(0, 80)}`);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(buildAuthPage(code, req.query));
 };
@@ -1758,11 +1781,11 @@ const tokenHandler = (req, res) => {
     if (!record || record.type !== "auth_code" || record.expires < Date.now()) {
       return res.status(400).json({ error: "invalid_grant", error_description: "Authorization code not found or expired." });
     }
-    if (!dynamicClients.has(body.client_id)) {
-      return res.status(400).json({ error: "invalid_client", error_description: "Unknown OAuth client." });
-    }
+    // A missing client record must not brick connectors registered before
+    // dynamicClients was persisted; PKCE and the code's client_id binding
+    // below still authenticate the exchange.
     const registeredClient = dynamicClients.get(body.client_id);
-    if (registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
+    if (registeredClient && registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
       return res.status(401).json({ error: "invalid_client", error_description: "Invalid client credentials." });
     }
 
@@ -1808,11 +1831,11 @@ const tokenHandler = (req, res) => {
     if (!record || record.type !== "refresh") {
       return res.status(400).json({ error: "invalid_grant" });
     }
-    if (!dynamicClients.has(body.client_id)) {
-      return res.status(400).json({ error: "invalid_client", error_description: "Unknown OAuth client." });
-    }
+    // A missing client record must not brick connectors registered before
+    // dynamicClients was persisted; PKCE and the code's client_id binding
+    // below still authenticate the exchange.
     const registeredClient = dynamicClients.get(body.client_id);
-    if (registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
+    if (registeredClient && registeredClient.client_secret && body.client_secret !== registeredClient.client_secret) {
       return res.status(401).json({ error: "invalid_client", error_description: "Invalid client credentials." });
     }
     if (body.client_id && record.client_id && body.client_id !== record.client_id) {

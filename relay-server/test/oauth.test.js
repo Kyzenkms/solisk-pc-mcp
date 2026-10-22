@@ -322,6 +322,34 @@ function makePkce() {
       assert.strictEqual(r.status, 400);
     });
 
+    await test("GET authorize self-heals unknown dyn_ client, POST then succeeds", async () => {
+      const lostClientId = "dyn_" + crypto.randomBytes(12).toString("hex");
+      const page = await req("GET",
+        `/mcp/testroom/oauth/authorize?client_id=${enc(lostClientId)}&redirect_uri=${enc(redirect)}&state=${"b".repeat(16)}&code_challenge=abc&code_challenge_method=S256&scope=mcp%3Atools&resource=${enc(resource)}`);
+      assert.strictEqual(page.status, 200);
+
+      const { challenge } = makePkce();
+      const r = await req("POST", "/mcp/testroom/oauth/authorize", form([
+        ["action", "allow"], ["api_key", apiKey], ["client_id", lostClientId],
+        ["redirect_uri", redirect], ["state", "b".repeat(16)], ["code_challenge", challenge],
+        ["code_challenge_method", "S256"], ["scope", "mcp:tools"], ["resource", resource],
+      ]));
+      assert.strictEqual(r.status, 302, `Expected 302, got ${r.status}: ${r.body}`);
+    });
+
+    await test("GET authorize does not self-heal untrusted redirect_uri", async () => {
+      const lostClientId = "dyn_" + crypto.randomBytes(12).toString("hex");
+      await req("GET",
+        `/mcp/testroom/oauth/authorize?client_id=${enc(lostClientId)}&redirect_uri=${enc("https://evil.com/cb")}&state=${"c".repeat(16)}&code_challenge=abc&code_challenge_method=S256&resource=${enc(resource)}`);
+      const { challenge } = makePkce();
+      const r = await req("POST", "/mcp/testroom/oauth/authorize", form([
+        ["action", "allow"], ["api_key", apiKey], ["client_id", lostClientId],
+        ["redirect_uri", "https://evil.com/cb"], ["state", "c".repeat(16)], ["code_challenge", challenge],
+        ["code_challenge_method", "S256"], ["scope", "mcp:tools"], ["resource", resource],
+      ]));
+      assert.strictEqual(r.status, 400);
+    });
+
     // -- 5. Token endpoint ---------------------------------------------------
     process.stdout.write("\nToken endpoint\n");
 
