@@ -5,24 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="PC Control MCP connects trusted AI clients to Windows machines through scoped, auditable Model Context Protocol tools. Private beta."
+      content="Solisk connects AI clients to files and desktop tools on your PC. Start locally or self-host the open-source MCP relay."
     />
-    <title>PC Control MCP | Scoped AI control for Windows</title>
+    <title>Solisk PC Control MCP | AI access to your files and apps</title>
     <meta name="theme-color" content="#070c0d" />
     <meta
       property="og:title"
-      content="PC Control MCP | Scoped AI control for Windows"
+      content="Solisk PC Control MCP | AI access to your files and apps"
     />
     <meta
       property="og:description"
-      content="Give trusted AI clients scoped, auditable control over Windows through Model Context Protocol tools. 97 tools, local-first, private beta."
+      content="Connect your AI to local files and Windows desktop tools. MIT-licensed runtime and relay, with local and self-hosted connection options."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://solisk.org/" />
-    <meta property="og:image" content="https://solisk.org/assets/brand-og-card.png" />
+    <meta property="og:image" content="https://solisk.org/assets/hero-showcase.png" />
     <link rel="canonical" href="https://solisk.org/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://solisk.org/assets/brand-og-card.png" />
+    <meta name="twitter:image" content="https://solisk.org/assets/hero-showcase.png" />
     <link rel="icon" href="assets/logo.svg?v=2" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css?v=101" />
     <script
@@ -66,11 +66,12 @@
     <main id="main">
       <section class="hero">
         <div class="hero-copy" data-hero>
-          <div class="eyebrow">CLI + Windows GUI / v1.0.0</div>
+          <div class="eyebrow">Solisk / CLI + Windows desktop</div>
           <h1>Give your AI a <em>Windows machine.</em></h1>
           <p>
-            One endpoint. 97 scoped tools. Local approval. Claude, ChatGPT
-            and Cursor command your PC — nothing runs you didn't allow.
+            Read a project file, inspect a Git diff, or work with Windows apps
+            from your AI client. Start locally or run your own open-source relay.
+            Choose permissions before granting access.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="cli.html">Install the CLI</a
@@ -84,7 +85,7 @@
           <div class="console-bar">
             <span class="dots"><i></i><i></i><i></i></span>
             <span>relay — mcp.solisk.org</span>
-            <span class="console-live">LIVE</span>
+            <span class="console-live">EXAMPLE</span>
           </div>
           <div class="console-body">
             <div class="url-label">MCP endpoint</div>
@@ -279,13 +280,13 @@
             </p>
             <a class="button" href="security.html">Read security model</a>
             <figure class="side-fig" data-reveal>
-              <img src="assets/step-authorize.png" alt="Every sensitive action gated behind visible approval" loading="lazy" />
+              <img src="assets/step-authorize.png" alt="Illustration of local approval for supported actions" loading="lazy" />
             </figure>
           </div>
           <dl class="sec-list">
             <div data-reveal>
               <dt class="t">Authenticate every client</dt>
-              <dd class="d">Owner and scoped keys travel as bearer credentials. The relay stores salted hashes, never plaintext.</dd>
+              <dd class="d">HTTP clients authenticate with keys or OAuth. Registered relay API keys are hashed; local config credentials are stored in plaintext files.</dd>
             </div>
             <div data-reveal>
               <dt class="t">Grant only required tools</dt>
@@ -293,7 +294,7 @@
             </div>
             <div data-reveal>
               <dt class="t">Keep execution local</dt>
-              <dd class="d">The desktop runtime runs tools. The hosted relay transports authenticated requests — it is not the runtime.</dd>
+              <dd class="d">Tools execute on your PC. TLS terminates at the relay, which can see forwarded requests and results; this is not end-to-end encryption.</dd>
             </div>
             <div data-reveal>
               <dt class="t">Revoke on demand</dt>
@@ -364,17 +365,19 @@
             <details>
               <summary>Is my PC exposed to the internet?</summary>
               <p>
-                No. The runtime executes on your machine; the relay only
-                transports authenticated requests. Local-only mode is pure
-                loopback traffic.
+                A hosted relay or public tunnel makes authenticated PC tools
+                reachable remotely, even without opening an inbound router port.
+                For local-only use, keep the HTTP bind on loopback and disable
+                relay, tunnel and Tailscale exposure, or use local stdio.
               </p>
             </details>
             <details>
               <summary>What can the AI actually do?</summary>
               <p>
-                Only what you enable. Scoped keys limit tool categories,
-                allowed paths bound the filesystem, and Ask mode confirms
-                sensitive actions locally first.
+                Available tools depend on the platform and configuration.
+                Use scoped keys and file-path rules, but do not treat them as
+                an OS sandbox around shell or desktop access. Approval is
+                tool-specific; read the <a href="security.html">trust boundaries</a> first.
               </p>
             </details>
             <details>
@@ -388,8 +391,9 @@
             <details>
               <summary>Do I need an account?</summary>
               <p>
-                No. Keys generate on your machine during onboarding and stay
-                there. Devices identify by room code, not identity.
+                Solisk does not require a separate user account. Credentials
+                are generated locally and presented to the selected relay
+                during authentication. Your AI client may require its own account.
               </p>
             </details>
             <details>
@@ -416,7 +420,7 @@
           <a class="button primary" href="cli.html">Install the CLI</a
           ><a class="button" href="https://github.com/Kyzenkms/solisk-pc-mcp/releases/latest">Windows installer</a
           >
-          <div class="release-note">macOS / Linux / Windows · v1.0.0 · public release</div>
+          <div class="release-note">macOS / Linux / Windows · see release notes for versions and platform capabilities</div>
         </div>
       </section>
     </main>

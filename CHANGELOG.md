@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Send structured diagnostics to stderr so CLI stdio clients receive only MCP messages.
+- Include the web control-room renderer in npm packages so `/app` works outside a source checkout.
+- Declare the registry's stdio launch argument and align local registry/desktop metadata with the CLI version. Existing published assets are unchanged.
+- Refuse foreground and background PowerShell commands that require approval when no desktop approval channel is attached.
+- Classify Axios `ECONNABORTED` timeouts as connectivity failures.
+- Correct setup/download instructions and document relay visibility, plaintext local credentials, audit data and tool-specific permission boundaries.
+
+### Added
+- Isolated test-suite runner and regression tests for stdio startup, metadata, packed dashboard assets and headless command approval.
+- Push/PR tests, Linux/macOS stdio smoke jobs, and test-gated Windows installer builds with explicit runtime dependency installation.
+
 ## [1.0.0] — 2026-09-05
 
 ### Added

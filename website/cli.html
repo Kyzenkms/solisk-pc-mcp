@@ -53,14 +53,13 @@
     <main id="main" class="page-shell">
       <header class="docs-hero">
         <div class="container">
-          <div class="eyebrow">Edition / Headless 1.0.0</div>
+          <div class="eyebrow">Edition / CLI</div>
           <h1>The server build. No window.</h1>
           <p>
-            Same protocol, same auth, same audit log as the desktop app —
-            packaged as a CLI for VPS and homelab boxes. Off-Windows,
-            Windows-only tools stay off and 45 portable tools stay on
-            (plus a POSIX shell_exec shim = 46 total); on Windows the CLI
-            serves the full native set, exactly like the GUI.
+            An MCP runtime for local clients, VPS and homelab boxes.
+            Windows provides the native tool set; Linux provides portable tools
+            and a POSIX shell; macOS adds native screenshot and input tools.
+            Run <code>solisk --list-tools</code> for your machine's inventory.
           </p>
         </div>
       </header>
@@ -95,25 +94,25 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kyzenkms/solisk-pc-mcp/m
 solisk --mode=stdio            # Claude Desktop / Cursor / Cline
 solisk --status                # probe a running server (exit 0 = up)
 solisk --list-tools            # active vs disabled matrix
-solisk --setup                 # regenerate config + key</code></pre>
+solisk --setup                 # initialize config and show the owner key</code></pre>
             <p>
-              Approval defaults to <code>always</code>: read-only shell
-              commands run, mutating ones are refused. Pass
-              <code>--approval-mode=turbo</code> only when any authenticated
-              client may shell the box.
+              Approval defaults to <code>always</code>. On Windows, PowerShell
+              commands requiring desktop approval are refused without the desktop
+              channel; <code>intermediate</code> permits recognized read-only commands.
+              The POSIX shell has a separate read-only allowlist. Turbo bypasses
+              shell approval; do not enable it just to resolve setup errors.
             </p>
           </section>
           <section id="dashboard">
             <h2>Local dashboard</h2>
             <p>
-              Every headless server serves a read-only runtime console at
-              <code>/dashboard</code> (Bearer key, same as MCP): live status,
-              tool inventory with scopes, session count, and the audit-log
-              tail refreshing every 5 seconds. No build step, no external
-              assets — works offline.
+              Start <code>solisk --mode=http</code> and leave that terminal running.
+              In a second terminal, use <code>solisk dashboard</code> to open
+              the web control room at <code>/app</code>. The HTTP server must
+              remain running; stdio mode does not serve a dashboard.
             </p>
-            <pre><code>open http://127.0.0.1:3000/dashboard
-# paste the owner API key once (kept in tab session storage)</code></pre>
+            <pre><code># Second terminal, while the HTTP server is running:
+solisk dashboard</code></pre>
           </section>
           <section id="tailscale">
             <h2>Tailscale remote access</h2>
@@ -180,7 +179,7 @@ solisk logs --lines 50      # audit tail (capped, 500 chars/line)
 solisk logs --follow        # stream new audit lines
 solisk backup               # timestamped config copy next to config
 solisk gui status           # is the desktop app installed? runtime up?
-solisk gui setup --installer "C:\path\to\PC Control MCP Setup 1.0.0.exe"
+solisk gui setup --installer "C:\path\to\downloaded-installer.exe"
 solisk setup                # step-by-step onboarding (needs a terminal)
 solisk keys list            # fingerprints only — full keys never print
 solisk keys add phone       # read-only by default, prints once
@@ -213,15 +212,11 @@ solisk tailscale [status] | serve | funnel --yes | off</code></pre>
           <section id="matrix">
             <h2>Tool matrix</h2>
             <p>
-              Active on headless: <code>filesystem</code> (20),
-              <code>memory</code> (6), <code>utility</code> (6),
-              <code>network</code> (3), <code>git</code> (10), plus
-              <code>shell_exec</code> (POSIX). Disabled as
-              <code>windows-only</code>: <code>shell</code>,
-              <code>system</code>, <code>system_advanced</code>,
-              <code>input</code>, <code>notification</code>,
-              <code>network_advanced</code>, <code>server</code>.
-              Full audit in <code>pc-control-headless/AUDIT.md</code>.
+              Use <code>solisk --list-tools</code> rather than assuming the same
+              inventory on every OS. Windows-only implementations are disabled
+              elsewhere. macOS native input and screenshot tools require
+              Accessibility and Screen Recording permissions. Native tool
+              availability does not imply identical permission enforcement.
             </p>
           </section>
         </article>

@@ -35,6 +35,13 @@ const shellTools = [
       // Human-in-the-loop approval, controlled by permission_mode:
       //   turbo → never ask · intermediate → auto-approve read-only · always → ask everything
       const mode = config.permission_mode || (config.sandbox_mode === "host" ? "turbo" : "always");
+      if (shouldRequestApproval(command, mode) && typeof process.send !== "function") {
+        return {
+          success: false,
+          error: "Command requires approval, but no desktop approval channel is attached. Use the desktop app to approve it.",
+          code: "SANDBOX_DENIED"
+        };
+      }
       if (shouldRequestApproval(command, mode) && process.send) {
         const id = Math.random().toString(36).substring(7);
         const approved = await new Promise((resolve) => {
@@ -119,6 +126,13 @@ const shellTools = [
 
       // Human-in-the-loop approval, controlled by permission_mode
       const mode = config.permission_mode || (config.sandbox_mode === "host" ? "turbo" : "always");
+      if (shouldRequestApproval(command, mode) && typeof process.send !== "function") {
+        return {
+          success: false,
+          error: "Background command requires approval, but no desktop approval channel is attached. Use the desktop app to approve it.",
+          code: "SANDBOX_DENIED"
+        };
+      }
       if (shouldRequestApproval(command, mode) && process.send) {
         const id = Math.random().toString(36).substring(7);
         const approved = await new Promise((resolve) => {

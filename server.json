@@ -1,17 +1,24 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Kyzenkms/solisk-pc-mcp",
-  "description": "Approval-gated PC control for AI clients: 97 tools for files, shell, GUI input, clipboard and audio.",
+  "description": "Connect AI clients to local files, shell and desktop tools, with an optional self-hosted relay.",
   "repository": {
     "url": "https://github.com/Kyzenkms/solisk-pc-mcp",
     "source": "github"
   },
-  "version": "1.0.1",
+  "version": "1.0.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "solisk",
       "version": "1.0.4",
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--mode",
+          "value": "stdio"
+        }
+      ],
       "transport": {
         "type": "stdio"
       }

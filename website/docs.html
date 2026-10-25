@@ -51,7 +51,7 @@
     <main id="main" class="page-shell">
       <header class="docs-hero">
         <div class="container">
-          <div class="eyebrow">Documentation / 1.0.0</div>
+          <div class="eyebrow">Documentation / Setup</div>
           <h1>From install to first tool call.</h1>
           <p>
             Practical setup for hosted, local, and self-hosted operation. Start
@@ -72,11 +72,12 @@
           <section id="install">
             <h2>Install on Windows</h2>
             <ol>
-              <li>Install the MSI from the latest GitHub release.</li>
-              <li>Run the installer (<code>PC Control MCP 1.0.0.msi</code>, classic <code>Setup .exe</code> also works).</li>
+              <li>Open the <a href="https://github.com/Kyzenkms/solisk-pc-mcp/releases/latest">latest GitHub release</a> and download its <code>PC Control MCP Setup … .exe</code> asset and <code>SHA256SUMS.txt</code>.</li>
+              <li>An MSI is not included in every release. Older installer filenames may still say <code>1.0.0</code>; use the release notes to identify the build.</li>
               <li>
                 Windows SmartScreen may warn because the installer is
-                unsigned. Verify the release checksum before continuing.
+                unsigned. Compare its SHA-256 hash with the release checksum
+                before running the installer; a checksum is not a publisher signature.
               </li>
               <li>
                 Complete onboarding and keep the generated owner API key
@@ -130,7 +131,28 @@
               Use the MCP URL shown in Dashboard and owner or scoped API key
               from Settings.
             </p>
-            <h3>HTTP configuration</h3>
+            <h3>Local command-based connection</h3>
+            <p>After <code>npm install -g solisk</code>, clients that accept
+              command-based MCP servers can launch the runtime directly:</p>
+            <pre><code>{
+  "mcpServers": {
+    "solisk": {
+      "command": "solisk",
+      "args": ["--mode=stdio"]
+    }
+  }
+}</code></pre>
+            <p>This uses the permissions of the launching process, not a bearer
+              login. No relay or HTTP server is needed. Restart the client after
+              installation if it cannot find the command.</p>
+            <h3>First task</h3>
+            <p>Choose a non-sensitive text file in an allowed folder, then ask:
+              “Use Solisk's read_file tool to read the absolute path I provide
+              and summarize it in three bullets. Do not run shell commands or
+              change files.” Verify the result matches before expanding access.</p>
+            <h3>HTTP configuration example</h3>
+            <p>Configuration field names vary by client. Use its documented
+              remote MCP format with your own endpoint and credential.</p>
             <pre><code>{
   "mcpServers": {
     "pc-control": {
@@ -175,9 +197,10 @@
             <h2>Set permissions before tools</h2>
             <h3>Approval mode</h3>
             <p>
-              <strong>Always ask</strong> requires local confirmation for tool
-              execution. Automatic modes reduce friction but increase risk if a
-              client or prompt is compromised.
+              <strong>Always ask</strong> gates supported PowerShell commands
+              through the desktop approval channel. Headless commands requiring
+              that channel are refused. Approval is not a dialog for every tool;
+              shell, filesystem and native input tools have different boundaries.
             </p>
             <h3>Allowed paths</h3>
             <p>
@@ -195,7 +218,7 @@
           <section id="self-hosting">
             <h2>Self-host the relay</h2>
             <p>
-              The separate self-hosted repository includes one Linux VPS
+              The repository's <code>self-hosted-setup/</code> directory includes a Linux VPS
               installer with OS detection, Docker Compose, and optional Caddy
               HTTPS.
             </p>
