@@ -13,23 +13,89 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.5-66E3D3?style=flat-square)](#requirements)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-8FB3AF?style=flat-square)](#os-support)
 
-[Install](#install) · [Windows GUI](#windows-gui) · [Connect an AI](#connect-an-ai-in-60-seconds) · [Security](#security-model) · [Self-host](#self-host-the-relay) · [CLI](#cli-reference) · [FAQ](#faq)
+[Install](#install) · [Windows GUI](#windows-gui) · [Connect an AI](#connect-an-ai) · [Security](#security-model) · [Self-host](#self-host-the-relay) · [CLI](#cli-reference) · [FAQ](#faq)
 
 </div>
 
-> [!TIP]
-> **One product, three faces, one runtime per machine.** Connect any MCP client by URL, approve once, call 97 tools — and watch every session, toggle every path, revoke anything. CLI on every OS, desktop control room on Windows, web dashboard (`/app`) anywhere.
+# Let your AI work with files and apps on your PC
+
+**Solisk connects MCP-compatible AI clients to your machine.** Read a project file,
+inspect a Git diff, or use Windows desktop tools without building a separate
+integration for each app. Start locally; use the hosted relay or run your own
+relay when the client needs a remote URL.
+
+- **Local or self-hosted:** the runtime and relay are MIT-licensed and included here.
+- **A Windows control room:** manage connections and approve supported shell commands locally.
+- **CLI on Windows, Linux and macOS:** capabilities differ by platform; see [OS support](#os-support).
+
+PC access is powerful. Use a test folder first and read the [trust boundaries](#security-model)
+before granting shell or desktop access. Approval is not a universal gate for every tool.
+
+## See the first win
+
+Run a complete local workflow before connecting a real project or remote relay:
+
+```bash
+node examples/first-win.js
+```
+
+The demo uses synthetic data and real MCP stdio calls to read a CSV, write and
+verify a Markdown report, then prove a path outside the allowed folder is denied.
+No account, model API key, relay or network is required. See [LAUNCH.md](LAUNCH.md)
+for the recording script, interactive product film and launch copy.
+
+Open the interactive product film at [`assets/launch/solisk-brand-film.html`](assets/launch/solisk-brand-film.html)
+for the visual overview, then run the technical demo to verify the local MCP path.
 
 ## Install
 
 ```bash
-npm install -g solisk      # Node 22.5+ · or run without installing: npx solisk
-solisk setup               # room name, owner key, approval mode — step by step
-solisk --mode=http         # MCP server on 127.0.0.1:3000 (default)
-solisk dashboard           # web control room at /app
+npm install -g solisk      # requires Node 22.5+
+solisk setup              # configure identity and approval mode
 ```
 
-Windows, Linux and macOS servers run the same command. Off-Windows serves the 45 portable tools + `shell_exec`; Windows-only automation stays off. The `/app` dashboard is the control room on every OS.
+Then choose **one** connection path below. For Windows users who prefer an installer,
+skip npm and use the [Windows GUI](#windows-gui).
+
+### Local client on the same machine
+
+For an MCP client that accepts command-based servers, add this entry to its MCP
+configuration. The client starts and stops Solisk; don't also start an HTTP server
+for this connection.
+
+```json
+{
+  "mcpServers": {
+    "solisk": {
+      "command": "solisk",
+      "args": ["--mode=stdio"]
+    }
+  }
+}
+```
+
+If the client cannot find `solisk`, restart it after installation or configure the
+absolute path to the installed command. Stdio uses the permissions of the local
+process, not a bearer-key login. It does not open the web dashboard or a relay.
+
+### Hosted or HTTP clients
+
+Start the server and leave this terminal running:
+
+```bash
+solisk --mode=http
+```
+
+In a **second terminal**, open the control room:
+
+```bash
+solisk dashboard
+```
+
+Use the MCP URL shown by the running instance for remote clients. For local HTTP,
+the default endpoint is `http://127.0.0.1:3000/mcp` and requires authentication.
+Use `solisk --mode=http --no-relay` to disable the hosted relay for that run;
+also leave Cloudflare and Tailscale exposure off for a local-only setup.
 
 ## Windows GUI
 
@@ -37,21 +103,25 @@ Windows, Linux and macOS servers run the same command. Off-Windows serves the 45
   <img src="assets/brand/landing/hero.png" width="780" alt="Solisk desktop control room">
 </div>
 
-1. Download **`PC Control MCP 1.0.0.msi`** from [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases) — the classic `Setup .exe` rides along.
+1. Open the [latest release](https://github.com/Kyzenkms/solisk-pc-mcp/releases/latest) and download its **`PC Control MCP Setup … .exe`** asset and `SHA256SUMS.txt`. An MSI is not included in every release.
 2. Run it: point-and-click control room, same engine as the CLI.
-3. Already have the CLI? `solisk gui setup --installer <path-to-.msi>` installs it silently.
+3. Already have the CLI? `solisk gui setup --installer "<path-to-downloaded-installer.exe>"` installs it silently.
 4. On Linux/macOS, `solisk gui` refuses by design and points you to the web dashboard.
 
 > [!WARNING]
-> The build is unsigned, so SmartScreen asks once: **More info → Run anyway**. An EV certificate ends this; it is budgeted, not done.
+> The Windows installer is unsigned and may trigger SmartScreen. Download only from the official release and compare its SHA-256 hash with `SHA256SUMS.txt` before deciding whether to run it. A checksum is not a publisher signature. Older release assets may still carry a `1.0.0` filename; consult the release notes rather than guessing a download URL.
 
-## Connect an AI in 60 seconds
+## Connect an AI
+
+For a remote connector, use your instance's URL and complete the client's
+authorization flow. Keep the room key out of chat messages and screenshots.
+Available connector features depend on the client and account.
 
 ```mermaid
 flowchart LR
-    A[Copy MCP URL<br/>from Setup] --> B[Paste as connector<br/>in Claude / ChatGPT]
+    A[Copy MCP URL<br/>from your running instance] --> B[Add a remote MCP connector]
     B --> C[Approve once<br/>consent + room key]
-    C --> D[Calling tools.<br/>Reconnects need no re-auth.]
+    C --> D[Verify tools are listed<br/>then try a read-only task]
     style D fill:#4fd1b5,color:#03211b
 ```
 
@@ -64,18 +134,30 @@ flowchart LR
 </div>
 
 > [!NOTE]
-> First connect fails but a retry works? Claude cached a failed discovery — remove and re-add the connector once, consent then appears directly.
+> If discovery fails, first check that the runtime and selected connection path are online. If a client cached an earlier failed connection, removing and re-adding the connector may help; it is not a substitute for checking the server error.
+
+### Your first successful task
+
+Choose a non-sensitive text file in a folder you have allowed, then ask:
+
+> Use Solisk's `read_file` tool to read the file at the absolute path I provide
+> and summarize it in three bullets. Do not run shell commands or change files.
+
+Success means the client lists Solisk's tools, `read_file` returns that file's
+contents, and the summary matches. If access is denied, correct the allowed path
+or key scope rather than switching to Turbo. Next, try inspecting a Git diff
+in a test repository. Desktop automation can wait until this basic flow works.
 
 ## Security model
 
-| # | Guarantee | How |
+| # | Control | Boundary |
 |:---:|---|---|
-| 1 | **Bearer-only** | Owner key, scoped key, OAuth token, or device cookie on every data route. Shells public, data never. |
-| 2 | **Zero-trust relay** | Authenticates before forwarding one byte. Takeovers logged and blocked. |
-| 3 | **PKCE + exact redirects + bound tokens** | No cross-room token reuse, ever. |
-| 4 | **Hashed at rest** | scrypt with unique salts. Secrets never hit logs or disk plaintext. |
-| 5 | **Fail closed** | Unknown session → re-init. Offline → local keeps working, remote redials. 300/min relay, 400/min local, 5 sessions, idle expiry. |
-| 6 | **Deliberate destruction** | Funnel, turbo, URL regen all confirm first and state what happens. |
+| 1 | **HTTP authentication** | Owner/scoped keys and OAuth authenticate HTTP clients; remembered device cookies also authorize web-console access. Stdio trusts the process launching it. |
+| 2 | **Authenticated relay** | TLS terminates at the relay, which can see forwarded requests and results. There is no client-to-PC end-to-end encryption. |
+| 3 | **Relay OAuth** | PKCE S256, redirect checks and resource-bound tokens protect the relay authorization flow. |
+| 4 | **Credential storage** | Relay API keys are scrypt-hashed. Local config keys and local OAuth tokens are stored in plaintext files; protect the profile and backups. |
+| 5 | **Tool permissions** | Use scoped keys and file-path rules, but do not treat them as an OS sandbox around shell commands or desktop automation. |
+| 6 | **Approval and audit** | Approval behavior depends on the tool and runtime. Tool audit records include arguments, which may contain sensitive data. |
 
 Full policy: [SECURITY.md](SECURITY.md) · found something? [Security advisory](https://github.com/Kyzenkms/solisk-pc-mcp/security/advisories/new) — not a public issue.
 
@@ -113,10 +195,13 @@ flowchart TB
 | OS | CLI (`solisk`) | Web dashboard (`/app`) | GUI | Tools |
 |:---|:---:|:---:|:---:|---|
 | **Windows 10/11 x64** | ✅ local + relay + tunnel | ✅ | ✅ full control room | **97** native |
-| **Linux** | ✅ server · stdio · tunnels · Tailscale | ✅ | ❌ — `solisk gui` refuses, points to `/app` | 45 portable + `shell_exec` |
-| **macOS** | ✅ server · stdio | ✅ | ❌ — same | 45 portable + `shell_exec` |
+| **Linux** | ✅ server · stdio · tunnels · Tailscale | ✅ | ❌ — `solisk gui` refuses, points to `/app` | Portable tools + `shell_exec` |
+| **macOS** | ✅ server · stdio | ✅ | ❌ — same | Portable tools + `shell_exec` + native screenshot/input implementations |
 
-Windows-only automation (mouse/keyboard hooks, screenshots, native dialogs) stays off elsewhere; everything portable stays on. Relay, tunnels, OAuth, keys, remembered devices, sessions, update checks — identical on all three.
+Windows-only implementations stay off elsewhere. macOS includes native screenshot
+and input tools that need Screen Recording and Accessibility permissions. Run
+`solisk --list-tools` for the actual inventory on your machine. Platform support
+does not imply identical tool behavior or security coverage.
 
 ### Requirements
 
@@ -188,10 +273,19 @@ Every attach command works with zero flags next to a running GUI.
 ## Verify
 
 ```bash
-cd relay-server && node --test test/oauth.test.js   # OAuth regression suite
-node test-live.js                                   # end-to-end vs a running server
-solisk doctor                                       # this machine — 0 failing is the goal
+npm ci
+npm ci --prefix relay-server
+npm test                         # isolated config; unit, HTTP, stdio and relay checks
+npm run test:stdio               # registry launch arguments + actual MCP file read
+npm run test:package             # extracted npm tarball: dashboard + API auth
 ```
+
+Run these from the repository root. CI runs the full suite on Windows and stdio
+smoke tests on Linux/macOS; release builds depend on those jobs. `npm run test:live`
+targets a running server rather than an isolated fixture; use it only deliberately.
+For an installed runtime, use `solisk doctor` to inspect local setup.
+The packaging test needs `tar` on PATH and reuses the checkout's installed
+dependencies; it does not replace a fresh-machine install test.
 
 ## FAQ
 
@@ -217,6 +311,6 @@ solisk doctor                                       # this machine — 0 failing
 
 <div align="center">
 
-<sub>[MIT](LICENSE) · Solisk PC Control MCP · v1.0.0 · [solisk.org](https://solisk.org)</sub>
+<sub>[MIT](LICENSE) · Solisk PC Control MCP · [Releases](https://github.com/Kyzenkms/solisk-pc-mcp/releases) · [solisk.org](https://solisk.org)</sub>
 
 </div>

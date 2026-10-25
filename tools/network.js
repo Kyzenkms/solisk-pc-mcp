@@ -9,6 +9,7 @@ function formatNetworkError(err, toolName) {
     code === "ENETUNREACH" ||
     code === "ECONNREFUSED" ||
     code === "ETIMEDOUT" ||
+    code === "ECONNABORTED" ||
     /getaddrinfo|network|internet|offline|disconnected|unreachable/i.test(msg)
   ) {
     return {

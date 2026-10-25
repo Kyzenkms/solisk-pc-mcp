@@ -92,14 +92,15 @@
                 <tr>
                   <td>Approval mode</td>
                   <td>
-                    Requires local user confirmation before execution when
-                    enabled.
+                    Gates supported shell commands through desktop confirmation;
+                    it is not a universal confirmation step for every tool.
                   </td>
                 </tr>
                 <tr>
                   <td>Allowed paths</td>
                   <td>
-                    Restricts filesystem operations to configured directories.
+                    Applies to file-tool path checks, not an OS sandbox around
+                    shell commands or desktop input.
                   </td>
                 </tr>
                 <tr>
@@ -134,34 +135,37 @@
               configuration.
             </p>
             <div class="notice">
-              TLS protects network transport. Current beta does not provide
-              application-level end-to-end encryption between MCP client and
-              desktop beyond the relay transport channel.
+              TLS terminates at the relay. The relay operator can see forwarded
+              requests and results; there is no client-to-PC end-to-end encryption.
+              Self-hosting moves that trust to your relay host.
             </div>
           </section>
           <section id="storage">
             <h2>Storage</h2>
             <p>
-              Desktop configuration and credentials are stored under the current
-              Windows user profile. Relay room and OAuth state are stored on the
-              relay host. Self-hosted deployments persist state in Docker
-              volumes.
+              Local API keys and local OAuth tokens are stored as plaintext JSON
+              under the runtime's configuration directory. Protect that directory
+              and backups with OS permissions. Relay room and OAuth state are
+              stored on the relay host. Hashed relay API keys do not mean every
+              local credential is hashed or encrypted.
             </p>
             <p>
+              Tool audit records include arguments, which can contain commands,
+              file contents or secrets; redact logs before sharing them.
               Back up configuration securely. Never commit
               <code>config.json</code>, <code>rooms.json</code>, OAuth token
               files, or generated secrets.
             </p>
           </section>
           <section id="limits">
-            <h2>Current beta limitations</h2>
+            <h2>Current limitations</h2>
             <ul>
               <li>
                 Windows installer is unsigned and may trigger SmartScreen.
               </li>
               <li>
-                Desktop TLS verification and Electron CSP require final release
-                hardening.
+                Approval and scope enforcement are tool- and runtime-specific;
+                do not treat shell or native input access as a confined filesystem sandbox.
               </li>
               <li>
                 No application-level end-to-end encryption across the managed
@@ -193,7 +197,7 @@
             <p>
               <a
                 class="button primary"
-                href="mailto:kyzenkms@duck.com?subject=Security%20report%20--%20PC%20Control%20MCP"
+                href="https://github.com/Kyzenkms/solisk-pc-mcp/security/advisories/new"
                 >Open private advisory</a
               >
             </p>

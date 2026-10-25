@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PC Control MCP - Brand Film</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* THEME: tokens copied from the app's ui.css (dark theme) */
+:root{--bg:#202020;--panel:#272727;--line:#383838;--teal:#4fd1b5;--teal2:#7fd8c6;--txt:#ffffff;--mut:#c9c9c9;--quiet:#929292;--warn:#f0c27a;--ai:#03211b;
+--page:#141414;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--page:#f3f3f3}}
+:root[data-theme="light"]{--page:#f3f3f3}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;margin:0}
+body{background:var(--page);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;font-family:'Instrument Sans',system-ui,sans-serif}
+.st{container-type:inline-size;position:relative;width:min(100%,calc((100vh - 100px)*16/9));aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:var(--bg);color:var(--txt);transition:background-color .45s,color .45s}
+.st:before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(100cqw 40cqw at 12% -12cqw,color-mix(in srgb,var(--teal) 13%,transparent),transparent 70%),radial-gradient(76cqw 38cqw at 96% 112%,color-mix(in srgb,var(--teal) 8%,transparent),transparent 70%),radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--teal) 16%,transparent) 1px,transparent 1.6px);background-size:auto,auto,2.6cqw 2.6cqw;-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 46%,transparent 92%);mask-image:linear-gradient(to bottom,#000 0%,#000 46%,transparent 92%)}
+.sc{position:absolute;inset:0;padding:7.5cqw 6cqw 3cqw;opacity:0;transform:translateY(3cqw);transition:opacity .35s,transform .5s cubic-bezier(.16,1,.3,1);pointer-events:none}
+.sc.on{opacity:1;transform:none}.sc.past{transform:translateY(-3cqw)}
+.e{opacity:0;transform:translateY(1.8cqw);transition:opacity .3s,transform .55s cubic-bezier(.16,1,.3,1)}
+.e.in{opacity:1;transform:none}.e.z{transform:scale(.88)}.e.in.z{transform:none}.e.l{transform:translateX(-3cqw)}.e.in.l{transform:none}
+.m{overflow:hidden;padding-bottom:.12em;margin-bottom:-.12em}
+.u{transform:translateY(110%);transition:transform .55s cubic-bezier(.16,1,.3,1)}.u.in{transform:none}
+h1,h2{font-weight:700;letter-spacing:-.045em;line-height:1}h1{font-size:7.4cqw}h2{font-size:4.6cqw}
+.sub{font-size:1.8cqw;line-height:1.4;color:var(--mut);max-width:38cqw}
+.t2{color:var(--teal2)}
+.mk{position:absolute;top:2.3cqw;left:6cqw;display:flex;align-items:center;gap:.7cqw;font:700 1.5cqw 'Instrument Sans';letter-spacing:-.03em;z-index:5}
+.mk i{width:1.7cqw;height:1.7cqw;border-radius:.5cqw;background:var(--teal);position:relative}.mk i:after{content:'';position:absolute;inset:.45cqw;border-radius:50%;border:.25cqw solid var(--bg)}
+.pb{position:absolute;left:0;bottom:0;height:.4cqw;background:var(--teal);width:0;z-index:6}
+.win{background:var(--panel);border:.12cqw solid var(--line);border-radius:1.2cqw;box-shadow:0 2cqw 5cqw rgba(0,0,0,.4);overflow:hidden;position:relative}
+.tb{display:flex;gap:.5cqw;align-items:center;padding:.9cqw 1.2cqw;border-bottom:.12cqw solid var(--line);font:600 1.05cqw 'Instrument Sans';color:var(--mut)}.tb i{width:.8cqw;height:.8cqw;border-radius:50%;background:var(--line)}.tb span{margin-left:.8cqw}.tb em{margin-left:auto;font-style:normal;color:var(--teal2)}
+.bd{padding:1.5cqw;position:relative}
+.lbl{font:600 1.05cqw/1 'Instrument Sans';color:var(--mut);margin:1.2cqw 0 .6cqw}
+.dot{display:inline-block;width:.8cqw;height:.8cqw;border-radius:50%;background:var(--teal2);margin-right:.5cqw}
+.bt{position:relative;display:inline-block;background:var(--teal);color:var(--ai);border-radius:.7cqw;padding:.7cqw 1.3cqw;font:700 1.15cqw 'Instrument Sans';white-space:nowrap;transition:transform .2s,background .3s}.bt.in{transform:scale(.92);background:var(--teal2)}.bt.g{background:var(--line);color:var(--txt)}
+.sw{display:none}.sw.in{display:inline}
+.seg{display:inline-flex;position:relative;background:var(--bg);border-radius:99px;padding:.3cqw;border:.12cqw solid var(--line)}.seg span{position:relative;z-index:1;padding:.6cqw 1.6cqw;font:700 1.15cqw 'Instrument Sans';transition:color .3s}
+.seg:before{content:'';position:absolute;left:.3cqw;top:.3cqw;bottom:.3cqw;width:calc(50% - .3cqw);background:var(--teal);border-radius:99px;transition:transform .4s cubic-bezier(.34,1.56,.64,1)}.seg.in:before{transform:translateX(100%)}
+.seg span:first-child{color:var(--ai)}.seg.in span:first-child{color:var(--txt)}.seg.in span:last-child{color:var(--ai)}
+.cur{position:absolute;width:2.2cqw;opacity:0;transform:translate(4cqw,4cqw);transition:opacity .3s,transform .7s cubic-bezier(.65,0,.25,1);filter:drop-shadow(0 .2cqw .3cqw rgba(0,0,0,.5));z-index:9;pointer-events:none}.cur.in{opacity:1;transform:none}
+.chp{display:inline-block;padding:.5cqw 1.1cqw;border-radius:99px;border:.12cqw solid var(--line);font:600 1.2cqw 'Instrument Sans';margin:.3cqw .4cqw 0 0}
+/* s0 */
+.pr{position:absolute;left:6cqw;right:6cqw;top:50%;transform:translateY(-50%)}
+/* chat + orbit */
+#sch,#sor{display:flex;align-items:center;gap:5cqw}#sch .win{width:50cqw;flex:none}
+.ch{padding:1.3cqw;display:flex;flex-direction:column;gap:.9cqw;height:31cqw}
+.cb{max-width:82%;padding:.9cqw 1.2cqw;border-radius:1.1cqw;font-size:1.3cqw;line-height:1.35}
+.cb.me{align-self:flex-end;background:var(--teal);color:var(--ai);border-bottom-right-radius:.3cqw}.cb.a{background:var(--line);border-bottom-left-radius:.3cqw}
+.tu{border:.12cqw solid var(--line);border-radius:1cqw;padding:.9cqw 1.1cqw;font-size:1.15cqw;background:var(--bg)}.tu b{display:block;color:var(--teal2);font-size:1.05cqw;margin-bottom:.4cqw}
+.tu>div{display:flex;gap:.7cqw;align-items:center;padding:.25cqw 0;color:var(--mut)}.tu .sp{width:1.2cqw;height:1.2cqw;border-width:.2cqw}.ck{color:var(--teal2);font-weight:700}
+.dts{display:inline-flex;gap:.35cqw}.dts i{width:.6cqw;height:.6cqw;border-radius:50%;background:var(--mut);animation:dt 1s infinite}.dts i:nth-child(2){animation-delay:.15s}.dts i:nth-child(3){animation-delay:.3s}@keyframes dt{50%{transform:translateY(-.4cqw);opacity:.4}}
+.inb{margin-top:auto;display:flex;gap:1cqw;align-items:center;border:.12cqw solid var(--line);border-radius:99px;padding:.6cqw .6cqw .6cqw 1.4cqw;font-size:1.2cqw;color:var(--quiet)}
+.ob{position:relative;width:44cqw;height:44cqw;flex:none}.orw{position:absolute;inset:0}
+.rg{position:absolute;left:50%;top:50%;width:var(--d);height:var(--d);margin:calc(var(--d)/-2);border:.1cqw dashed rgba(255,255,255,.14);border-radius:50%}
+.orb{position:absolute;left:50%;top:50%;width:var(--d);height:var(--d);margin:calc(var(--d)/-2);animation:sr var(--s) linear infinite}.orb.r{animation-direction:reverse}
+.tr{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 62%,rgba(79,209,181,.55));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - .25cqw),#000 calc(100% - .24cqw));mask:radial-gradient(farthest-side,transparent calc(100% - .25cqw),#000 calc(100% - .24cqw))}.orb.r .tr{transform:scaleX(-1)}
+.pk{position:absolute;left:50%;top:0;transform:translate(-50%,-50%)}.pk.b{top:100%}
+.pk>.ci{animation:sr var(--s) linear infinite reverse}.orb.r .pk>.ci{animation-direction:normal}
+@keyframes sr{to{transform:rotate(360deg)}}
+.ci{display:flex;align-items:center;gap:.6cqw;background:var(--panel);border:.12cqw solid var(--line);border-radius:99px;padding:.7cqw 1.2cqw;font:700 1.35cqw 'Instrument Sans';white-space:nowrap;box-shadow:0 1cqw 2.4cqw rgba(0,0,0,.35)}.ci i{width:1.1cqw;height:1.1cqw;border-radius:50%;background:var(--c)}
+.hub{position:absolute;left:50%;top:50%;width:9cqw;height:9cqw;margin:-4.5cqw 0 0 -4.5cqw;border-radius:2.2cqw;background:var(--teal);color:var(--ai);display:grid;place-items:center;text-align:center;font:700 1.6cqw/1.05 'Instrument Sans';letter-spacing:-.03em;z-index:2;animation:hp 2s ease-in-out infinite}@keyframes hp{0%,100%{box-shadow:0 0 0 1cqw rgba(79,209,181,.14),0 0 0 2.2cqw rgba(79,209,181,.07)}50%{box-shadow:0 0 0 1.6cqw rgba(79,209,181,.2),0 0 0 3.2cqw rgba(79,209,181,.08)}}
+/* morph */
+.fl{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;gap:4cqw;background:var(--bgc);color:var(--ai);clip-path:circle(0% at 72% 54%);transition:clip-path .75s cubic-bezier(.7,0,.2,1)}.fl.in{clip-path:circle(150% at 72% 54%)}.fl.f{--bgc:var(--bg);color:var(--txt)}
+.fl h2{font-size:12cqw;letter-spacing:-.06em}.fl p{font-size:2.2cqw;font-weight:600}
+.pl{width:17cqw;height:17cqw;background:var(--ai);display:grid;place-items:center;color:var(--bgc);font:700 8cqw/1 'Instrument Sans';opacity:0;transform:rotate(-120deg) scale(.2);transition:transform .9s cubic-bezier(.34,1.56,.64,1),opacity .25s}.pl.in{opacity:1;transform:none}
+.p1{border-radius:50%}.p2{border-radius:28%}.p3{clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}.p4{border-radius:63% 37% 54% 46%/55% 48% 52% 45%}
+.rr{position:absolute;left:72%;top:54%;width:20cqw;height:20cqw;margin:-10cqw;border:.5cqw solid rgba(3,33,27,.2);border-radius:50%;opacity:0}.fl.in .rr{animation:rr 1.1s ease-out}@keyframes rr{from{opacity:1;transform:scale(.2)}to{opacity:0;transform:scale(7)}}
+.dk{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%) scale(0);transition:transform .8s cubic-bezier(.34,1.56,.64,1)}.dk.in{transform:translate(-50%,-50%) translate(var(--x),var(--y)) scale(1)}
+/* connection */
+.pp{display:flex;align-items:center;margin-top:2.6cqw}
+.nn{padding:.9cqw 1.8cqw;border-radius:99px;background:var(--panel);border:.12cqw solid var(--line);font:700 1.6cqw 'Instrument Sans';white-space:nowrap}.nn.t{background:var(--teal);color:var(--ai);border-color:var(--teal)}
+.cx{flex:1;height:.25cqw;position:relative;background:repeating-linear-gradient(90deg,var(--line) 0 .8cqw,transparent .8cqw 1.5cqw)}.cx:after{content:'';position:absolute;top:-.4cqw;left:0;width:1cqw;height:1cqw;border-radius:50%;background:var(--teal2);animation:pk 1.4s linear infinite}@keyframes pk{to{left:calc(100% - 1cqw)}}
+.rt{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4cqw;margin-top:2.6cqw}
+.card3{background:var(--panel);border:.12cqw solid var(--line);border-radius:1.2cqw;padding:1.4cqw}.card3 b{display:block;font:700 1.7cqw 'Instrument Sans';letter-spacing:-.03em;color:var(--teal2);margin-bottom:.5cqw}.card3 small{font-size:1.25cqw;line-height:1.35;color:var(--mut)}
+.ur{display:flex;align-items:center;gap:1.6cqw;margin-top:2.2cqw;font-size:1.4cqw;color:var(--mut)}.ur span:first-child{font:600 1.35cqw ui-monospace,Consolas,monospace;background:var(--bg);border:.12cqw solid var(--line);border-radius:.8cqw;padding:.7cqw 1.2cqw;color:var(--teal2)}
+/* s1 */
+#s1,#s2,#s4{display:flex;align-items:center;gap:5cqw}
+.rq{display:flex;align-items:center;gap:1.4cqw;padding:1.3cqw 1.6cqw;margin-bottom:1.1cqw}
+.rq b{font:700 1.8cqw 'Instrument Sans';letter-spacing:-.03em;display:block}.rq small{font-size:1.25cqw;color:var(--mut)}
+.ic{flex:none;width:3.4cqw;height:3.4cqw;border-radius:50%;display:grid;place-items:center;background:var(--teal);color:var(--ai);font:700 1.7cqw 'Instrument Sans'}
+.sp{width:2cqw;height:2cqw;border:.3cqw solid var(--line);border-top-color:var(--teal2);border-radius:50%;animation:sn .7s linear infinite}@keyframes sn{to{transform:rotate(360deg)}}
+/* s2 */
+#s2 .win{width:50cqw;flex:none;display:grid;grid-template-columns:11cqw 1fr}#s2 .tb{grid-column:1/-1}.sd{background:var(--bg);border-right:.12cqw solid var(--line);padding:1.1cqw .8cqw;font:600 1.1cqw 'Instrument Sans'}.sd small{display:block;color:var(--quiet);font-size:.9cqw;margin:.8cqw .5cqw .4cqw}.sd div{padding:.55cqw .7cqw;border-radius:.6cqw;color:var(--mut);display:flex;justify-content:space-between}.sd div.on{background:rgba(79,209,181,.14);color:var(--teal2)}.sd b{font-weight:600;color:var(--quiet);font-size:.9cqw}
+.fd{display:flex;justify-content:space-between;padding:.85cqw 0;border-bottom:.1cqw solid var(--line);font:600 1.25cqw 'Instrument Sans'}.fd span:last-child{color:var(--mut);font-weight:500}
+.cli{margin-top:2cqw;border:.12cqw dashed var(--line);border-radius:1cqw;padding:1.2cqw 1.4cqw;max-width:32cqw}.cli b{font-size:1.4cqw}.cli div{font:500 1.15cqw 'ui-monospace',Consolas,monospace;color:var(--teal2);margin-top:.5cqw}
+/* s3 */
+.g4{display:grid;grid-template-columns:1fr 1fr;gap:1.6cqw;margin-top:2.4cqw}
+.bn{background:var(--bg);color:var(--txt);border-radius:1.3cqw;padding:2cqw;min-height:13cqw}.bn h3{font:700 3cqw/1 'Instrument Sans';letter-spacing:-.045em;color:var(--teal2)}.bn p{font-size:1.6cqw;line-height:1.35;margin-top:1cqw;color:var(--txt);opacity:.85}
+/* s4 */
+.ap{flex:1.1}.fl{flex:1}
+.pm{display:flex;justify-content:space-between;align-items:center;padding:1.1cqw 0;border-bottom:.1cqw solid var(--line);font:600 1.5cqw 'Instrument Sans'}
+.tg{width:4.6cqw;height:2.5cqw;border-radius:99px;background:var(--line);position:relative;transition:.3s}.tg:after{content:'';position:absolute;top:.3cqw;left:.3cqw;width:1.9cqw;height:1.9cqw;border-radius:50%;background:var(--txt);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}.tg.on,.tg.in{background:var(--teal)}.tg.on:after,.tg.in:after{transform:translateX(2.1cqw)}.tg.on.in{background:var(--line)}.tg.on.in:after{transform:none}
+.lk{font:600 1.15cqw 'Instrument Sans';color:var(--warn)}
+/* s5 */
+#s5{display:flex;flex-direction:column;justify-content:center}
+.cta{display:inline-block;background:var(--teal);color:var(--ai);border-radius:99px;padding:1.1cqw 2.4cqw;font:700 2.2cqw 'Instrument Sans';margin-top:2.4cqw}
+select{font:600 12px 'Instrument Sans',sans-serif;padding:8px 12px;border-radius:99px;background:#272727;color:#fff;border:1px solid #383838;max-width:170px}.cap{position:absolute;left:50%;bottom:1.8cqw;transform:translateX(-50%);max-width:70%;text-align:center;background:rgba(0,0,0,.62);color:#fff;font:600 1.7cqw 'Instrument Sans';padding:.6cqw 1.4cqw;border-radius:99px;opacity:0;transition:opacity .3s;z-index:7}.cap.on{opacity:1}
+.ctl{flex-wrap:wrap;display:flex;gap:10px;align-items:center;width:min(100%,calc((100vh - 100px)*16/9))}
+.ctl input{flex:1;accent-color:#4fd1b5}.ctl span{font:500 12px ui-monospace,Consolas,monospace;color:#6F9A98;min-width:40px}
+button{font:600 13px 'Instrument Sans',sans-serif;padding:9px 18px;border-radius:99px;border:0;background:#4fd1b5;color:#03211b;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid #f0c27a;outline-offset:3px}
+@media (prefers-reduced-motion:reduce){.sc,.e,.u{transition-duration:.01s!important}.sp{animation:none}}
+</style>
+</head>
+<body>
+<div class="st" id="st">
+<div class="mk"><i></i>PC Control</div>
+
+<section class="sc" id="s0">
+ <div class="pr"><div class="m"><h1 class="u" data-t=".1" data-until="1.9">Tell your AI</h1></div><div class="m"><h1 class="u t2" data-t=".4" data-until="1.9">what you need.</h1></div></div>
+ <div class="pr"><div class="m"><h1 class="u" data-t="2" style="font-size:8.4cqw">Watch your</h1></div><div class="m"><h1 class="u" data-t="2.2" style="font-size:8.4cqw">computer <span class="t2">do it.</span></h1></div></div>
+</section>
+
+<section class="sc" id="s1">
+ <div style="flex:.8"><h2 class="e" data-t=".1">Just ask.</h2><p class="sub e" data-t=".4" style="margin-top:1.4cqw">In plain words. No setup talk, no scripts.</p></div>
+ <div style="flex:1.4">
+  <div class="win rq e l" data-t=".5"><span class="ic"><span class="sp sw in" data-t="0" data-until="1.2"></span><span class="sw" data-t="1.2">&#10003;</span></span><div><b>"Tidy my Downloads folder"</b><small>Sorted into neat folders</small></div></div>
+  <div class="win rq e l" data-t="1.5"><span class="ic"><span class="sp sw in" data-t="0" data-until="2.2"></span><span class="sw" data-t="2.2">&#10003;</span></span><div><b>"Find last March's invoice"</b><small>Found and opened for you</small></div></div>
+  <div class="win rq e l" data-t="2.5"><span class="ic"><span class="sp sw in" data-t="0" data-until="3.2"></span><span class="sw" data-t="3.2">&#10003;</span></span><div><b>"Why is my computer slow?"</b><small>Closed what was slowing it down</small></div></div>
+  <div class="win rq e l" data-t="3.5"><span class="ic"><span class="sp sw in" data-t="0" data-until="4.2"></span><span class="sw" data-t="4.2">&#10003;</span></span><div><b>"Back up my project"</b><small>Saved and ready to go</small></div></div>
+ </div>
+</section>
+
+<section class="sc" id="sch">
+ <div style="flex:1"><h2 class="e" data-t=".1">Ask in the chat.</h2><p class="sub e" data-t=".4" style="margin-top:1.4cqw">Your AI does the work on your computer, right from the conversation.</p></div>
+ <div class="win e z" data-t=".25"><div class="tb"><i></i><i></i><i></i><span>AI assistant</span><em><span class="dot" style="margin:0 .5cqw 0 0"></span>PC Control connected</em></div>
+  <div class="ch">
+   <div class="cb me e ph" data-t=".5">Clean up my Downloads and find last March's invoice.</div>
+   <div style="position:relative;min-height:3.6cqw"><div class="cb a e" data-t="1" data-until="1.75"><span class="dts"><i></i><i></i><i></i></span></div><div class="cb a e ph" data-t="1.75" style="position:absolute;top:0;left:0">On it. Starting with your Downloads folder.</div></div>
+   <div class="tu e ph" data-t="2.25"><b>Using PC Control</b>
+    <div class="e" data-t="2.5"><span class="sp sw in" data-t="0" data-until="3"></span><span class="sw ck" data-t="3">&#10003;</span>Looked through Downloads</div>
+    <div class="e" data-t="3"><span class="sp sw in" data-t="0" data-until="3.5"></span><span class="sw ck" data-t="3.5">&#10003;</span>Sorted files into folders</div>
+    <div class="e" data-t="3.5"><span class="sp sw in" data-t="0" data-until="4"></span><span class="sw ck" data-t="4">&#10003;</span>Found the March invoice</div>
+   </div>
+   <div class="cb a e ph" data-t="4.5">Done. Your Downloads are sorted, and the March invoice is open.</div>
+   <div class="inb"><span style="flex:1">Message your AI</span><span class="bt" data-t=".25" data-until="1">Send</span></div>
+  </div>
+ </div>
+</section>
+
+<section class="sc" id="s2">
+ <div style="flex:1">
+  <h2 class="e" data-t=".1">Your control center.</h2>
+  <p class="sub e" data-t=".4" style="margin-top:1.4cqw">See what your AI is doing. Pause it any time.</p>
+  <div class="cli e" data-t="4.6"><b>Prefer the command line?</b><div>&#9679; Connected. Ready for your AI.</div></div>
+ </div>
+ <div class="win e z" data-t=".3"><div class="tb"><i></i><i></i><i></i><span>PC Control</span><span style="color:var(--quiet);font-weight:500">MCP workspace</span><em><span class="dot" style="margin:0 .5cqw 0 0"></span>Server running</em></div><div class="sd"><small>Workspace</small><div>Local machine</div><small>Control room</small><div class="on">Overview</div><div>Connections</div><div>Setup</div><div>Health</div><div>Capabilities <b>96</b></div><div>Activity</div><div>API &amp; keys</div><div>Settings</div></div>
+  <div class="bd">
+   <div class="lbl" style="margin:0 0 .5cqw;color:var(--teal2)">Control room / Overview</div><div style="font:700 2.4cqw/1.1 'Instrument Sans';letter-spacing:-.04em">Your computer, connected.</div><div class="lbl">Approval mode</div>
+   <div class="seg" data-t="2.2"><span>Always ask</span><span>Turbo mode</span><svg class="cur" data-t="1.4" data-until="2.9" style="left:75%;top:55%" viewBox="0 0 21 30"></svg></div>
+   <div class="lbl">MCP URL</div>
+   <div style="display:flex;gap:1cqw;align-items:center"><div style="flex:1;border:.12cqw solid var(--line);border-radius:.8cqw;padding:.9cqw 1.1cqw;font:600 1.15cqw 'Instrument Sans';color:var(--mut)">mcp.solisk.org/mcp/your-pc-a3f8b2c1</div><span class="bt" data-t="3.9"><span class="sw in" data-t="0" data-until="3.9">Copy MCP URL</span><span class="sw" data-t="3.9">Copied</span><svg class="cur" data-t="3.2" data-until="4.6" style="left:55%;top:55%" viewBox="0 0 21 30"></svg></span></div>
+   <div class="lbl">Recent activity</div>
+   <div class="fd e" data-t="1"><span>Sorted your Downloads folder</span><span>just now</span></div>
+   <div class="fd e" data-t="2.2"><span>Took a screenshot</span><span>just now</span></div>
+   <div class="fd e" data-t="3.4"><span>Backed up Projects</span><span>just now</span></div>
+  </div>
+ </div>
+</section>
+
+<section class="sc" id="sor">
+ <div style="flex:1"><h2 class="e" data-t=".1" data-until="1" style="font-size:5.4cqw">Works with the AI you already use.</h2><p class="sub e" data-t=".5" data-until="1" style="margin-top:1.4cqw">ChatGPT, Claude, Cursor, OpenClaw and any other MCP-compatible app. One connection for all of them.</p></div>
+ <div class="ob">
+  <div class="orw" hidden>
+   <i class="rg" style="--d:22cqw"></i><i class="rg" style="--d:38cqw"></i>
+   <div class="orb" style="--d:22cqw;--s:9s"><i class="tr"></i><div class="pk"><span class="ci"><i style="--c:var(--amber)"></i>Claude</span></div><div class="pk b"><span class="ci"><i style="--c:var(--blue)"></i>Cursor</span></div></div>
+   <div class="orb r" style="--d:38cqw;--s:14s"><i class="tr"></i><div class="pk"><span class="ci"><i style="--c:var(--lime)"></i>ChatGPT</span></div><div class="pk b"><span class="ci"><i style="--c:var(--red)"></i>OpenClaw</span></div></div>
+  </div>
+  <div class="hub e z ph" data-t=".25" data-until="1"><span>Your<br>PC</span></div>
+ </div>
+<div class="fl" style="--bgc:var(--amber)" data-t="1"><i class="rr"></i><div class="pl p1 ph" data-t="1.25">&#10003;</div><div><div class="m"><h2 class="u" data-t="1.25">Claude</h2></div><p class="e" data-t="1.75">Connected to your PC</p></div></div>
+<div class="fl" style="--bgc:var(--blue)" data-t="2"><i class="rr"></i><div class="pl p2 ph" data-t="2.25">&#10003;</div><div><div class="m"><h2 class="u" data-t="2.25">Cursor</h2></div><p class="e" data-t="2.75">Connected to your PC</p></div></div>
+<div class="fl" style="--bgc:var(--lime)" data-t="3"><i class="rr"></i><div class="pl p3 ph" data-t="3.25">&#10003;</div><div><div class="m"><h2 class="u" data-t="3.25">ChatGPT</h2></div><p class="e" data-t="3.75">Connected to your PC</p></div></div>
+<div class="fl" style="--bgc:var(--red)" data-t="4"><i class="rr"></i><div class="pl p4 ph" data-t="4.25">&#10003;</div><div><div class="m"><h2 class="u" data-t="4.25">OpenClaw</h2></div><p class="e" data-t="4.75">Connected to your PC</p></div></div>
+<div class="fl f" data-t="5"><h2 class="e" data-t="5.5" style="position:absolute;top:8cqw;font-size:4.6cqw">One connection. Every app.</h2>
+ <div class="hub e z ph" style="top:58%" data-t="5.25"><span>Your<br>PC</span></div>
+ <span class="ci dk ph" style="--x:-17cqw;--y:-9cqw" data-t="5.5"><i style="--c:var(--amber)"></i>Claude</span><span class="ci dk ph" style="--x:17cqw;--y:-9cqw" data-t="5.75"><i style="--c:var(--blue)"></i>Cursor</span><span class="ci dk ph" style="--x:-17cqw;--y:9cqw" data-t="6"><i style="--c:var(--lime)"></i>ChatGPT</span><span class="ci dk ph" style="--x:17cqw;--y:9cqw" data-t="6.25"><i style="--c:var(--red)"></i>OpenClaw</span></div>
+</section>
+
+<section class="sc" id="scn">
+ <div class="e" data-t=".1" style="font:700 1.4cqw 'Instrument Sans';color:var(--teal2)">What is MCP?</div>
+ <h2 class="e" data-t=".25" style="font-size:4.2cqw;margin-top:.6cqw">MCP lets any AI app use real tools.</h2>
+ <p class="sub e" data-t=".75" style="margin-top:.9cqw;max-width:60cqw">PC Control MCP turns your computer into one of them.</p>
+ <div class="pp"><span class="nn e z ph" data-t="2">Your AI app</span><span class="cx e" data-t="2.5"></span><span class="nn t e z ph" data-t="2.75">MCP</span><span class="cx e" data-t="3.25"></span><span class="nn e z ph" data-t="3.5">Your PC</span></div>
+ <div class="rt">
+  <div class="card3 e z ph" data-t="4.25"><b>Hosted relay</b><small>A public link with no port forwarding. Free during the beta.</small></div>
+  <div class="card3 e z ph" data-t="4.75"><b>Cloudflare tunnel</b><small>A direct pipe, on a quick address or your own domain.</small></div>
+  <div class="card3 e z ph" data-t="5.25"><b>Local only</b><small>Apps on this PC. Nothing leaves your machine.</small></div>
+ </div>
+ <div class="ur e" data-t="6.25"><span>mcp.solisk.org/mcp/your-pc-a3f8b2c1</span><span>Each PC gets its own private address. Paste it into your AI app.</span></div>
+</section>
+
+<section class="sc" id="s3">
+ <h2 class="e" data-t=".1">What you get.</h2>
+ <div class="g4">
+  <div class="bn e z" data-t=".4"><h3>Hours back</h3><p>Hand off the boring stuff and get on with your day.</p></div>
+  <div class="bn e z" data-t="1.4"><h3>Your call, always</h3><p>Your AI asks before it acts, unless you say go.</p></div>
+  <div class="bn e z" data-t="2.4"><h3>Private by design</h3><p>No account. No tracking. Your files stay yours.</p></div>
+  <div class="bn e z" data-t="3.4"><h3>Works from anywhere</h3><p>Ask from your phone. Your computer does the work.</p></div>
+ </div>
+</section>
+
+<section class="sc" id="s4">
+ <div class="ap">
+  <h2 class="e" data-t=".1">Always your call.</h2>
+  <div class="win e z" data-t=".5" style="margin-top:2cqw"><div class="bd">
+   <div style="font:700 1.9cqw/1.25 'Instrument Sans';letter-spacing:-.03em">Your AI wants to sort your Downloads folder.</div>
+   <div style="margin-top:1.6cqw"><span class="bt g">Not now</span> <span class="bt" data-t="3.4">Allow<svg class="cur" data-t="2.6" data-until="4" style="left:55%;top:55%" viewBox="0 0 21 30"></svg></span></div>
+   <div class="e" data-t="3.7" style="margin-top:1.4cqw;color:var(--teal2);font:600 1.4cqw 'Instrument Sans'">&#10003; Done. Your Downloads are sorted.</div>
+  </div></div>
+ </div>
+ <div class="fl">
+  <div class="lbl e" data-t=".8" style="font-size:1.3cqw">Folders your AI can use</div>
+  <div class="pm e" data-t="1"><span>Documents</span><span class="tg in"></span></div>
+  <div class="pm e" data-t="1.4"><span>Projects</span><span class="tg in"></span></div>
+  <div class="pm e" data-t="1.8"><span>Photos</span><span class="tg on" data-t="2.8"></span></div>
+  <div class="pm e" data-t="2.2"><span>System files</span><span class="lk">Off limits</span></div>
+ </div>
+</section>
+
+<section class="sc" id="s5">
+ <div class="m"><h1 class="u" data-t=".1">Let your AI</h1></div>
+ <div class="m"><h1 class="u t2" data-t=".3">actually do it.</h1></div>
+ <p class="sub e" data-t="1.1" style="margin-top:2cqw">Works with the AI apps you already use. Use the desktop app or the command line, on your computer. Free during the public beta.</p>
+ <div class="e" data-t="1.6" style="margin-top:1.4cqw"><span class="chp">Claude</span><span class="chp">ChatGPT</span><span class="chp">Cursor</span><span class="chp">VS Code</span><span class="chp">OpenClaw</span><span class="chp">Any MCP app</span></div>
+ <div class="e z" data-t="2.2"><span class="cta">Get started at mcp.solisk.org</span></div>
+</section>
+<div class="pb" id="pb"></div><div class="cap" id="cap"></div>
+</div>
+<div class="ctl"><button id="pp">Pause</button><button id="rs">Restart</button><input type="range" id="sk" min="0" max="55" step="0.1" value="0" aria-label="Seek"><span id="tm">0:00</span><button id="md">Full promo (56s)</button><button id="vb" hidden aria-pressed="false">Voice off</button><select id="vs" hidden aria-label="Voice"></select><button id="sn" aria-pressed="false">Sound off</button><button id="fs">Fullscreen</button></div>
+<script>
+const S=[[0,4],[4,10],[10,16],[16,22],[22,30],[30,38],[38,44],[44,50],[50,56]],T=56;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const BG=[css('--bg'),css('--bg'),css('--bg'),css('--bg'),css('--bg'),css('--bg'),css('--teal'),css('--bg'),css('--bg')],FG=[css('--txt'),css('--txt'),css('--txt'),css('--txt'),css('--txt'),css('--txt'),css('--ai'),css('--txt'),css('--txt')];
+document.querySelectorAll('.cur').forEach(e=>e.innerHTML='<path d="M0 0V24L7 18L12 30L17 28L12 17H21Z" fill="#fff" stroke="#202020" stroke-width="1.5"/>');
+const st=document.getElementById('st'),sk=document.getElementById('sk'),tm=document.getElementById('tm'),pb=document.getElementById('pb'),pp=document.getElementById('pp');
+const sc=[...document.querySelectorAll('.sc')],els=sc.map(s=>[...s.querySelectorAll('[data-t]')]);
+let t=0,play=true,last=performance.now(),cur=-1;
+function render(){
+  let ci=0;S.forEach(([a],i)=>{if(t>=a)ci=i});
+  if(ci!==cur){if(fwd&&cur>=0)whoosh();cur=ci;st.style.backgroundColor=BG[ci];st.style.color=FG[ci]}
+  sc.forEach((s,i)=>{const[a,b]=S[i],lt=t-a;
+    s.classList.toggle('on',t>=a&&t<b);s.classList.toggle('past',t>=b);
+    if(lt<-1||lt>b-a+1)return;
+    els[i].forEach(el=>{const d=el.dataset,at=Math.round(+d.t*4)/4,u=d.until?Math.round(+d.until*4)/4:1e9,on_=lt>=at&&lt<u,was=el.classList.contains('in');el.classList.toggle('in',on_);if(on_&&!was&&fwd)sfxFor(el)})});
+  pb.style.width=(t/T*100)+'%';sk.value=Math.min(t,55);
+  tm.textContent='0:'+String(Math.floor(t)).padStart(2,'0');
+}
+function tick(n){const dt=Math.min((n-last)/1000,.1);last=n;fwd=play;if(play){t+=dt;if(hl){if(t<R[ri][0]){t=R[ri][0];jumped()}else if(t>=R[ri][1]){ri++;if(ri>=R.length){ri=0;t=0}else t=R[ri][0];jumped()}}else if(t>=T+1){t=0;jumped()}}voice();music();render();requestAnimationFrame(tick)}
+pp.onclick=()=>{play=!play;pp.textContent=play?'Pause':'Play';if(!play&&SS)SS.cancel()};
+document.getElementById('rs').onclick=()=>{t=0;ri=0;play=true;pp.textContent='Pause';jumped()};
+sk.oninput=()=>{t=+sk.value;fwd=false;ri=Math.max(0,R.findIndex(r=>t<r[1]));jumped();render()};
+let AC,mg,nb,on=false,fwd=false,lb=-1;const gt={};
+function ac(){if(!AC){AC=new(window.AudioContext||window.webkitAudioContext)();mg=AC.createGain();mg.gain.value=.55;mg.connect(AC.destination);nb=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);const d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}return AC}
+function gate(k,ms){const n=performance.now();if(gt[k]&&n-gt[k]<ms)return false;gt[k]=n;return true}
+function osc(ty,f1,f2,du,vo,dl){const a=ac(),t0=a.currentTime+(dl||0),o=a.createOscillator(),g=a.createGain();o.type=ty;o.frequency.setValueAtTime(f1,t0);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t0+du);g.gain.setValueAtTime(vo,t0);g.gain.exponentialRampToValueAtTime(.0001,t0+du);o.connect(g);g.connect(mg);o.start(t0);o.stop(t0+du+.05)}
+function nz(du,vo,f1,f2,q,ty){const a=ac(),t0=a.currentTime,s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();s.buffer=nb;s.loop=true;f.type=ty||'bandpass';f.Q.value=q;f.frequency.setValueAtTime(f1,t0);f.frequency.exponentialRampToValueAtTime(f2,t0+du);g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(vo,t0+du*.3);g.gain.exponentialRampToValueAtTime(.0001,t0+du);s.connect(f);f.connect(g);g.connect(mg);s.start(t0);s.stop(t0+du+.05)}
+function whoosh(){if(!on)return;nz(.6,.1,300,2400,.6)}
+function slam(){if(!on||!gate('sl',120))return;osc('sine',120,50,.3,.28)}
+function pop(){if(!on||!gate('po',80))return;osc('sine',380,760,.1,.26)}
+function click(){if(!on)return;osc('sine',1500,900,.05,.1)}
+function toggle(){if(!on)return;osc('sine',500,700,.08,.25);osc('sine',700,1000,.08,.2,.07)}
+function swish(){}
+function tk(){}
+function chime(k){if(!on)return;if(k){[523,659,784,1047].forEach((f,i)=>osc('sine',f,0,.9,.2,i*.09))}else{osc('sine',880,0,.35,.2);osc('sine',1320,0,.4,.13,.06)}}
+function sfxFor(el){if(!on)return;const c=el.classList;
+ if(c.contains('u'))return slam();
+ if(c.contains('cur'))return swish();
+ if(c.contains('bt')||c.contains('btn'))return click();
+ if(c.contains('seg')||c.contains('tg'))return toggle();
+ if(el.querySelector&&el.querySelector('.cta'))return chime(1);
+ if(c.contains('sw')&&el.textContent.trim()==='\u2713')return chime(0);
+ if(c.contains('sp')||c.contains('sw'))return;
+ if(c.contains('rq')||c.contains('bn')||c.contains('tl')||c.contains('win')||c.contains('ph'))return pop();
+ if(c.contains('fd')||c.contains('pm')||c.contains('chp')||c.contains('cli')||c.contains('bub')||c.contains('tc')||c.contains('fr'))return tk();
+ if(c.contains('e'))swish()}
+let mbs;function mbus(){if(mbs)return mbs;const a=ac(),g=a.createGain(),f=a.createBiquadFilter(),cv=a.createConvolver(),w=a.createGain(),len=Math.floor(a.sampleRate*2.6),ir=a.createBuffer(2,len,a.sampleRate);for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.8)}g.gain.value=.5;f.type='lowpass';f.frequency.value=2600;cv.buffer=ir;w.gain.value=.55;g.connect(f);f.connect(mg);f.connect(cv);cv.connect(w);w.connect(mg);return mbs=g}
+function nt(f,du,vo,ty,at){const a=ac(),t0=a.currentTime,o=a.createOscillator(),o2=a.createOscillator(),g=a.createGain();o.type=o2.type=ty;o.frequency.value=f;o2.frequency.value=f*1.004;g.gain.setValueAtTime(.0001,t0);g.gain.linearRampToValueAtTime(vo,t0+at);g.gain.exponentialRampToValueAtTime(.0001,t0+du);o.connect(g);o2.connect(g);g.connect(mbus());o.start(t0);o2.start(t0);o.stop(t0+du+.1);o2.stop(t0+du+.1)}
+const CH=[[146.83,185,220,277.2],[123.47,146.83,185,220],[196,246.9,293.7,370],[220,277.2,329.6,246.9]];
+function music(){if(!on||!fwd)return;const b=Math.floor(t/.75);if(b===lb)return;lb=b;const j=b%4,c=CH[(b>>2)&3];
+ if(j===0){c.forEach(f=>nt(f,4.4,.03,'sine',1.4));nt(c[0]>130?c[0]/2:c[0],3,.1,'sine',.08);mbus().gain.value=.5*Math.min(1,t/2.5)*Math.min(1,(T+.5-t)/2.5)}
+ if(t>5&&(j===0||j===2||(j===3&&b%8===3)))nt(c[[0,2,1,3][j]]*2,1.8,.05,'triangle',.008)}
+function music0(){return;const b=Math.floor(t*2);if(b===lb)return;lb=b;
+ if(b%2===0)osc('sine',130,42,.28,.5);else if(t>4)nz(.06,.1,7000,9000,1,'highpass');
+ if(t>4&&b%2===0)osc('triangle',[110,110,130.8,98][(b>>2)&3],0,.42,.2);
+ if(t>4&&b%8===0)[220,261.6,329.6].forEach(f=>osc('sine',f,0,3.6,.04))}
+const SS=window.speechSynthesis,cap=document.getElementById('cap'),vsel=document.getElementById('vs'),vb=document.getElementById('vb'),md=document.getElementById('md');
+let hl=false,ri=0,ci=0,vOn=false,vc=null,capT=0;
+const R=[[0,4],[4,8],[10,14],[22,28],[30,34],[50,56]];
+const cues=[{t:.3,s:"Tell your AI what you need.",h:1},{t:2.2,s:"Watch your computer do it.",h:1},{t:4.4,s:"Just ask, in plain words.",h:1},{t:6,s:"Tidy folders. Find invoices. Back up projects.",h:1},{t:10.4,s:"Your control center shows every move."},{t:13,s:"Pick how much freedom it gets. Copy your link. Done."},{t:17.5,s:"Get hours back.",h:1},{t:18.5,s:"Stay in charge.",h:1},{t:19.5,s:"Keep it private.",h:1},{t:20.5,s:"And work from anywhere.",h:1},{t:24.5,s:"Always your call.",h:1},{t:26,s:"Your AI asks first. You approve.",h:1},{t:28,s:"Pick its folders. System files stay off limits."},{t:31.4,s:"Let your AI actually do it.",h:1},{t:33.8,s:"Works with the AI apps you already use. Free during the public beta.",h:1}];
+function seekCues(){ci=cues.findIndex(c=>c.t>=t-.05);if(ci<0)ci=cues.length}
+function jumped(){if(SS)SS.cancel();seekCues();lb=-1;cap.classList.remove('on')}
+function say(s){if(!SS)return;const u=new SpeechSynthesisUtterance(s);if(vc)u.voice=vc;u.rate=1.05;SS.speak(u)}
+function voice(){while(ci<cues.length&&t>=cues[ci].t){const c=cues[ci++];if(vOn&&fwd&&(!hl||c.h)&&t-c.t<1){say(c.s);cap.textContent=c.s;cap.classList.add('on');capT=t+Math.max(2,c.s.length*.07)}}if(t>capT)cap.classList.remove('on')}
+function vol(){if(mg)mg.gain.value=vOn?.3:.55}
+const vsc=v=>/natural|online|neural/i.test(v.name)?3:/google|aria|jenny|samantha|daniel|ava|allison/i.test(v.name)?2:v.localService?0:1;
+function loadV(){if(!SS)return;const L=SS.getVoices().filter(v=>/^en/i.test(v.lang)).sort((a,b)=>vsc(b)-vsc(a));vsel.innerHTML='';L.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name.replace(/Microsoft |Google /,'');vsel.appendChild(o)});vc=L[0]||null}
+if(SS){SS.onvoiceschanged=loadV;loadV()}else{vb.textContent='Voice unavailable';vsel.style.display='none'}
+vsel.onchange=()=>{vc=SS.getVoices().find(v=>v.name===vsel.value)||vc};
+vb.onclick=()=>{if(!SS)return;vOn=!vOn;vb.textContent=vOn?'Voice on':'Voice off';vb.setAttribute('aria-pressed',vOn);if(vOn)SS.speak(new SpeechSynthesisUtterance(''));else{SS.cancel();cap.classList.remove('on')}vol()};
+md.onclick=()=>{hl=!hl;md.textContent=hl?'Highlights (28s)':'Full promo (56s)';t=0;ri=0;play=true;pp.textContent='Pause';jumped()};
+const PN=[587.33,659.25,739.99,880,987.77,1174.66];let pi=0;
+function pl(f,du,vo,ty){const a=ac(),t0=a.currentTime,o=a.createOscillator(),g=a.createGain();o.type=ty||'sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t0);g.gain.linearRampToValueAtTime(vo,t0+.006);g.gain.exponentialRampToValueAtTime(.0001,t0+du);o.connect(g);g.connect(mg);o.start(t0);o.stop(t0+du+.05)}
+function rise(du,vo){const a=ac(),t0=a.currentTime,s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();s.buffer=nb;s.loop=true;f.type='bandpass';f.Q.value=.8;f.frequency.setValueAtTime(300,t0);f.frequency.exponentialRampToValueAtTime(7500,t0+du);g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(vo,t0+du);g.gain.linearRampToValueAtTime(0,t0+du+.04);s.connect(f);f.connect(g);g.connect(mg);s.start(t0);s.stop(t0+du+.1)}
+function kick(){osc('sine',160,46,.26,.6);nz(.02,.12,5000,3000,1)}
+function clap(v){nz(.16,v,1700,1100,.9);nz(.05,v*.7,2400,2000,1)}
+function hat(v){nz(.05,v,8500,9500,1,'highpass')}
+function impact(){osc('sine',110,38,.6,.45);nz(.9,.18,9000,3000,.7,'highpass')}
+function whoosh(){if(on)impact()}
+function slam(){if(!on||!gate('sl',120))return;osc('sine',100,42,.3,.3);nz(.1,.1,3500,1200,1)}
+function pop(){if(!on||!gate('po',60))return;pl(PN[pi++%PN.length],.4,.1)}
+function click(){if(!on)return;pl(2200,.06,.07,'triangle');nz(.03,.08,5000,3000,1)}
+function toggle(){if(!on)return;pl(740,.2,.1);setTimeout(()=>pl(987.77,.3,.1),70)}
+function chime(k){if(!on)return;if(k){[587.33,739.99,880,1174.66].forEach((f,i)=>setTimeout(()=>pl(f,.9,.12),i*90));impact()}else{pl(987.77,.35,.09);setTimeout(()=>pl(1318.5,.45,.07),70)}}
+const CH2=[{r:123.47,n:[246.94,293.66,369.99]},{r:98,n:[196,246.94,293.66]},{r:146.83,n:[293.66,369.99,440]},{r:110,n:[220,277.18,329.63]}];
+function music(){if(!on||!fwd)return;const s=Math.floor(t*8);if(s===lb)return;lb=s;
+ const c=CH2[(s>>4)&3],q=s&15,sx=s&3,base=.5*Math.min(1,t/1.5)*Math.min(1,(T+.4-t)/2),g=mbus().gain,n=AC.currentTime;
+ const kOn=(t>=2&&t<44)||t>=50,gr=t>=4&&(t<44||t>=50),bd=(t>=3.5&&t<4)||(t>=21&&t<22)||(t>=49&&t<50);
+ if(sx===0){g.cancelScheduledValues(n);if(kOn){kick();g.setValueAtTime(base*.4,n);g.linearRampToValueAtTime(base,n+.22)}else g.setValueAtTime(base,n)}
+ if(q===0)c.n.forEach(f=>nt(f,2.4,.03,'sine',.5));
+ if(s===16)rise(2,.16);if(s===160)rise(2,.18);if(s===384)rise(2,.2);
+ if(bd)clap(.1+(t%1)*.22);
+ if(gr&&(q===4||q===12))clap(.26);
+ if(t>=4&&sx===2)hat(.1);
+ if(t>=10&&gr&&(sx===1||sx===3))hat(.04);
+ if(gr&&sx===2)osc('triangle',c.r*(q===10||q===14?2:1),0,.2,.3);
+ if(t>=10&&gr&&(q===6||q===14))c.n.forEach(f=>nt(f,.4,.028,'sawtooth',.004));
+ if(t>=4){if(t>=50){nt(c.n[s%3]*2,.3,.03,'triangle',.005)}else if(sx%2===0)nt(c.n[(s>>1)%3]*2,.35,.03,'triangle',.005)}}
+const sn=document.getElementById('sn');sn.onclick=()=>{on=!on;if(on){ac().resume();vol();pop()}sn.textContent=on?'Sound on':'Sound off';sn.setAttribute('aria-pressed',on)};
+document.getElementById('fs').onclick=()=>{(st.requestFullscreen||st.webkitRequestFullscreen||(()=>{})).call(st)};
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
