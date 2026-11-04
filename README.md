@@ -12,6 +12,8 @@
 [![License](https://img.shields.io/badge/license-MIT-4FD1B5?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.5-66E3D3?style=flat-square)](#requirements)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-8FB3AF?style=flat-square)](#os-support)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-4FD1B5?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=solisk)
+[![Glama](https://glama.ai/mcp/servers/Kyzenkms/solisk-pc-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Kyzenkms/solisk-pc-mcp)
 
 [Install](#install) · [Windows GUI](#windows-gui) · [Connect an AI](#connect-an-ai) · [Security](#security-model) · [Self-host](#self-host-the-relay) · [CLI](#cli-reference) · [FAQ](#faq)
 
